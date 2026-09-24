@@ -65,5 +65,5 @@ next endpoint-first/root-port retrain reached **Gen2 x16**; `lspci` and
 
 The second physical CMP 170HX was absent from PCIe enumeration under this BIOS
 layout, so this method has **not** been verified on two cards. The manual
-second-pass sequence was verified on the first card; automated cold-boot
-verification is recorded separately after deployment.
+second-pass sequence and one automated cold boot were verified on the first
+card; the boot result is recorded in the host-test document.
