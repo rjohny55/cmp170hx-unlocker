@@ -1,0 +1,15 @@
+[Unit]
+Description=CMP 170HX PCIe Gen2 second driver pass
+DefaultDependencies=no
+After=sysinit.target
+Before=basic.target multi-user.target graphical.target
+ConditionPathExists=/usr/local/sbin/cmp170-gen2-second-pass
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/cmp170-unlock.conf
+ExecStart=/usr/local/sbin/cmp170-gen2-second-pass ${CMP170_EXPECTED_GPUS}
+RemainAfterExit=no
+
+[Install]
+WantedBy=sysinit.target
