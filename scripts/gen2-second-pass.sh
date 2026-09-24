@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 # Reproduce the successful CMP 170HX sequence: initialize the patched driver,
 # FLR, initialize it again, then retrain endpoint first and root port second.
-# This script is intentionally manual until a cold-boot service is validated.
+# Also used by the one-shot cold-boot service after host validation.
 
 log() { printf '[cmp170-gen2] %s\n' "$*"; }
 die() { log "ERROR: $*" >&2; exit 1; }

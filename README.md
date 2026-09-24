@@ -63,7 +63,8 @@ next endpoint-first/root-port retrain reached **Gen2 x16**; `lspci` and
 `nvidia-smi` agreed, and the card still reported **65536 MiB**. See
 [`docs/host-test-2026-09-24.md`](docs/host-test-2026-09-24.md).
 
-The second physical CMP 170HX was absent from PCIe enumeration under this BIOS
-layout, so this method has **not** been verified on two cards. The manual
-second-pass sequence and one automated cold boot were verified on the first
-card; the boot result is recorded in the host-test document.
+The second physical CMP 170HX was absent from PCIe enumeration under this X99
+BIOS layout; the first card's second-pass and cold-boot results are recorded in
+the host-test document. On a separate AMD EPYC server, the method was verified
+on **eight** CMP 170HX cards at Gen2 x16 after reboot. All eight retained
+65536 MiB. See [`docs/eight-gpu-test-2026-09-24.md`](docs/eight-gpu-test-2026-09-24.md).
