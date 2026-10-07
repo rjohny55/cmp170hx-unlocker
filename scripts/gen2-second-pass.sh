@@ -75,6 +75,8 @@ retrain() {
 
     for pass in 1 2; do
         [[ -e /sys/bus/pci/devices/$gpu ]] || die "$gpu disappeared"
+        # Mask only Target Link Speed. Width is negotiated by the physical
+        # link/BIOS; this procedure is identical for x4, x8 and x16.
         setpci -s "$gpu" CAP_EXP+30.w=0002:000f
         setpci -s "$port" CAP_EXP+30.w=0002:000f
         gpu_target=$((16#$(readreg "$gpu" CAP_EXP+30.w) & 15))

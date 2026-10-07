@@ -98,6 +98,60 @@ overrides mean an `Enabled` flag alone is not proof of working ECC.
 
 ## Verified result and limits
 
+### SM count compared with a stock A100
+
+| GPU / state | SM count per card | FP32 CUDA cores | Change |
+| --- | ---: | ---: | --- |
+| CMP 170HX on the tested host, before this update | 70 | 4480 | Baseline |
+| CMP 170HX on the tested host, after this update | 74 | 4736 | +4 SM / +256 cores, approximately +5.7% |
+| Stock NVIDIA A100 (whole GPU, not a MIG partition) | 108 | 6912 | NVIDIA specification |
+
+The A100 count is documented in NVIDIA's
+[Ampere architecture description](https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/).
+The full GA100 die design has 128 SM, but the shipping A100 exposes 108, not
+128. Our observed 74 SM is approximately 68.5% of the A100's SM count (34 fewer
+SM). Neither this ratio nor the +5.7% count increase is a measured performance
+ratio: clocks, memory bandwidth, enabled features and the workload also matter.
+The observed 74 SM is confirmed on these four cards, not guaranteed for every
+CMP 170HX sample.
+
+Torch confirmed compute capability **8.0** and **74 SM** on every card. FP32
+core counts are calculated from the GA100 architecture's **64 CUDA cores per
+SM**, not read from an independent core-count field: `74 * 64 = 4736` per
+card, or **18944** across the four cards (previously 17920).
+
+On 2026-10-07 at 13:45 UTC, `nvidia-smi -q -d ECC` reported **Current: Enabled**
+and **Pending: Enabled** on all four GPUs. All reported volatile and aggregate
+DRAM/SRAM error counters were zero; repair flags were `No`. These are driver
+report values, not independent verification of ECC protection, because the
+vendored patch overrides some ECC reporting responses.
+
+### PCIe Gen2 is independent of x4 / x8 / x16 width
+
+The same service handles **Gen2 x4, Gen2 x8 and Gen2 x16**; there is no x4-only
+branch, lane-width setting or separate build. GPU count (1, 2, 4 or 8 cards) is
+also independent of PCIe lane width.
+
+The service changes only Target Link Speed (`CAP_EXP+30.w=0002:000f`) and the
+Retrain Link bit (`CAP_EXP+10.w=0020:0020`), on the endpoint and upstream port.
+These masked writes do not force a lane count; negotiated width is determined
+by the slot, upstream port, BIOS bifurcation, wiring and successful link
+training. An x4 connection cannot be made x16 by this service.
+
+Isolated tests exercise Gen1-to-Gen2 retraining at x4, x8 and x16, including
+the FLR/second-driver-pass path, and verify that the service writes only the
+speed/retrain masks. Hardware verification with the latest driver is currently
+**four cards at Gen2 x4**. Earlier hardware tests of the same activation
+sequence reached **Gen2 x16**, as recorded below. x8 and the latest driver on
+your next x16 server still need physical verification; use the same patch and
+`install-service.sh auto`, then check both generation and width:
+
+```bash
+nvidia-smi --query-gpu=pci.bus_id,pcie.link.gen.current,pcie.link.width.current --format=csv
+```
+
+### Earlier hardware checks
+
 On 2026-09-24, one enumerated CMP 170HX (`0000:81:00.0`) on a dual Xeon E5 v4
 X99 host, Ubuntu 24.04.5, kernel `6.8.0-142-generic`, patched NVIDIA open driver
 `610.57.04`, was initially **Gen1 x16**. Endpoint-first retrain before FLR did

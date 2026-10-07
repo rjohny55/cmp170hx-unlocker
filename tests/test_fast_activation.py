@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -104,6 +105,87 @@ class FastActivationTests(unittest.TestCase):
         self.assertIn('setpci -s "$gpu" CAP_EXP+10.w=0020:0020', activation)
         self.assertLess(activation.index('setpci -s "$gpu" CAP_EXP+10.w=0020:0020'),
                         activation.index('setpci -s "$port" CAP_EXP+10.w=0020:0020'))
+
+    def test_gen2_retrain_preserves_x4_x8_x16_on_both_driver_paths(self):
+        original = (ROOT / "scripts/gen2-second-pass.sh").read_text()
+        for width in [4, 8, 16]:
+            for require_flr in [False, True]:
+                with self.subTest(width=width, flr=require_flr), tempfile.TemporaryDirectory() as tmp:
+                    base = Path(tmp)
+                    sysfs = base / "sysfs"
+                    sysfs.mkdir()
+                    port = base / "pci" / "0000:00:01.0"
+                    gpu = port / "0000:01:00.0"
+                    gpu.mkdir(parents=True)
+                    (port / "class").write_text("0x060400\n")
+                    (gpu / "vendor").write_text("0x10de\n")
+                    (gpu / "device").write_text("0x20c2\n")
+                    (gpu / "reset").touch()
+                    (gpu / "driver").mkdir()
+                    (gpu / "driver" / "unbind").touch()
+                    for device in [port, gpu]:
+                        (sysfs / device.name).symlink_to(device, target_is_directory=True)
+                    (base / "modules").touch()
+                    (base / "loads").write_text("0\n")
+                    commands = base / "bin"
+                    commands.mkdir()
+                    bodies = {
+                        "fuser": "exit 1",
+                        "sleep": "exit 0",
+                        "nvidia-smi": "exit 0",
+                        "modprobe": '''if [[ $1 == nvidia ]]; then
+    loads=$(<"$FIXTURE_DIR/loads")
+    printf '%s\\n' "$((loads + 1))" > "$FIXTURE_DIR/loads"
+fi''',
+                        "setpci": '''[[ $# == 3 && $1 == -s ]] || exit 98
+device=$2
+register=$3
+printf '%s %s\\n' "$device" "$register" >> "$FIXTURE_DIR/calls"
+case $register in
+    CAP_EXP+0c.l) printf '00456102\\n' ;;
+    CAP_EXP+12.w)
+        speed=1
+        [[ ! -f $FIXTURE_DIR/gen2-$device ]] || speed=2
+        printf '%04x\\n' "$((0x1000 | (FIXTURE_WIDTH << 4) | speed))"
+        ;;
+    CAP_EXP+30.w)
+        target=0xa002
+        loads=$(<"$FIXTURE_DIR/loads")
+        if [[ $FIXTURE_REQUIRE_FLR == 1 && $loads -lt 2 && $device == 0000:01:00.0 ]]; then
+            target=0xa001
+        fi
+        printf '%04x\\n' "$target"
+        ;;
+    CAP_EXP+30.w=0002:000f) : ;;
+    CAP_EXP+10.w=0020:0020) : > "$FIXTURE_DIR/gen2-$device" ;;
+    *) exit 98 ;;
+esac''',
+                    }
+                    for name, body in bodies.items():
+                        command = commands / name
+                        command.write_text("#!/bin/bash\nset -eu\n" + body + "\n")
+                        command.chmod(0o755)
+                    script = base / "activation.sh"
+                    script.write_text(original.replace(
+                        "[[ ${EUID} -eq 0 ]] || die 'run as root'", ": # fixture only"
+                    ).replace("/sys/bus/pci/devices", str(sysfs)).replace(
+                        "/run/cmp170-gen2-second-pass.lock", str(base / "activation.lock")
+                    ).replace("/dev/nvidia", str(base / "dev-nvidia")).replace(
+                        "/proc/modules", str(base / "modules")
+                    ))
+                    result = subprocess.run(["bash", str(script), "auto"],
+                        env={**os.environ, "PATH": str(commands) + ":" + os.environ["PATH"],
+                             "FIXTURE_DIR": str(base), "FIXTURE_WIDTH": str(width),
+                             "FIXTURE_REQUIRE_FLR": "1" if require_flr else "0"},
+                        capture_output=True, text=True, timeout=15)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn("PASS: 1 detected CMP 170HX cards", result.stdout)
+                    self.assertEqual("starting FLR and second driver pass" in result.stdout, require_flr)
+                    self.assertIn(f"status={0x1000 | (width << 4) | 2:04x}", result.stdout)
+                    calls = (base / "calls").read_text().splitlines()
+                    writes = [call.split()[1] for call in calls if "=" in call]
+                    self.assertTrue(writes)
+                    self.assertEqual(set(writes), {"CAP_EXP+30.w=0002:000f", "CAP_EXP+10.w=0020:0020"})
 
     def test_driver_install_cannot_enable_author_hammer_or_vfio(self):
         wrapper = (ROOT / "install-driver.sh").read_text()

@@ -37,10 +37,14 @@
     "current_address": "192.168.1.201 (DHCP changed from 192.168.1.200 after reboot)",
     "boot_id": "ec649967-8cbf-4d8d-a163-57757c408c3e",
     "sm_count_per_gpu": [74, 74, 74, 74],
+    "compute_capability_per_gpu": ["8.0", "8.0", "8.0", "8.0"],
+    "fp32_cuda_cores_per_gpu_calculated_from_sm": [4736, 4736, 4736, 4736],
     "memory_mib_per_gpu": [65536, 65536, 65536, 65536],
     "pcie_generation_per_gpu": [2, 2, 2, 2],
     "pcie_width_per_gpu": [4, 4, 4, 4],
     "service_result": "success, ExecMainStatus=0, PASS for all four automatically detected cards",
+    "ecc_report_at_utc": "2026-10-07T13:45:46Z",
+    "ecc_report": "nvidia-smi -q -d ECC: Current and Pending Enabled on all four cards; all reported volatile/aggregate DRAM/SRAM error counts 0, repair flags No. Reporting-only observation, not independent proof of working ECC.",
     "validation": "Post-reboot Torch device properties confirmed 74 SM per GPU versus 70 before. All four cards retained 65536 MiB and reached Gen2 x4. Panel health is HTTP 200, MCP port is reachable, all six running containers returned. Mining automatically resumed on all four cards; no additional GPU test was injected into that workload.",
     "limits": "No sustained stability or inference throughput benchmark yet. ECC reports Enabled, but the upstream patch overrides reporting, so this alone does not prove hardware ECC correctness."
   }
