@@ -1,0 +1,39 @@
+{
+  "repository": "https://github.com/rjohny55/cmpunlocker",
+  "branch": "master",
+  "revision": "17535a0ab1e8d8a9797e096ac5a2495f3da16d2c",
+  "comparison_base": "8f3c82f",
+  "imported_at": "2026-10-07",
+  "directory": "vendor/cmpunlocker",
+  "integration_changes": "Build-only staging directory and explicit compile-job limit added to driver/build.sh; upstream register patches preserved.",
+  "activation": "Root scripts/gen2-second-pass.sh remains authoritative; upstream gen2 hammer disabled by install-driver.sh.",
+  "changes": [
+    {"commit": "6c442ee", "effect": "Additional SM/TPC floorsweep restoration; hardware validation required."},
+    {"commit": "3c52ad3", "effect": "DRAM/SRAM ECC enablement and reporting; may affect usable memory and performance."},
+    {"commit": "5bd2c83", "effect": "Restricts ECC overrides/reporting to CMP 170HX instead of other GPU models."},
+    {"commit": "17535a0", "effect": "Adds SRAM ECC register enablement."},
+    {"commit": "ee41902", "effect": "Adds support for NVIDIA 615.71.09; installer still matches installed userspace driver."},
+    {"commit": "c40033b", "effect": "Optional VFIO/GSP state preservation helpers; not enabled by our AI-host installer."},
+    {"commit": "300127f", "effect": "CMP SKU mask changes intended to allow GPU profiling."},
+    {"commit": "f51da03", "effect": "Leaves high reserved memory backing WPR2 reserved."}
+  ],
+  "live_host_200": {
+    "observation": "Baseline before the 2026-10-07 driver deployment and reboot.",
+    "driver": "610.57.04",
+    "root_cause": "cmp170-gen2-second-pass.service expected 1 GPU but enumerated 4; exited before activation.",
+    "link_under_load": "All 4 GPUs: Gen1 x4, 96% GPU utilization.",
+    "upstream_port": "Max Gen3 x4; target Gen2.",
+    "driver_replacement_or_reset_performed": false,
+    "sm_count_per_gpu": [70, 70, 70, 70]
+  },
+  "deployment_host_200": {
+    "kernel": "6.8.0-142-generic",
+    "driver": "610.57.04",
+    "installed_nvidia_sha256": "a96842750bb0557acffa44ec3d9fc342c5de12de99a680868a5510e719e2e645",
+    "previous_driver_sha256": "8afff30dd420bf05691746cbcf282388460ee946a475faf2611ee390d4715696",
+    "driver_backup": "/var/lib/cmp170-unlock/backups/driver-before-17535a0.JiXiPa",
+    "service_inventory": "auto, recalculated each boot",
+    "baseline_boot_id": "28309193-d9c6-44c1-bbc9-dc53ec736c9a",
+    "validation": "Modules compiled and installed, initramfs rebuilt; reboot requested, post-boot hardware validation pending."
+  }
+}

@@ -21,11 +21,13 @@ restore_driver() {
 trap restore_driver EXIT
 
 [[ ${EUID} -eq 0 ]] || die 'run as root'
-[[ $# -eq 1 && "$1" =~ ^[1-9][0-9]*$ ]] || die 'usage: sudo scripts/gen2-second-pass.sh EXPECTED_GPU_COUNT'
-expected_count=$1
-for tool in setpci nvidia-smi modprobe fuser; do
+[[ $# -le 1 && ( ${1:-auto} == auto || ${1:-auto} =~ ^[1-9][0-9]*$ ) ]] || die 'usage: sudo scripts/gen2-second-pass.sh [EXPECTED_GPU_COUNT|auto]'
+expected_count=${1:-auto}
+for tool in setpci nvidia-smi modprobe fuser flock; do
     command -v "$tool" >/dev/null || die "$tool is required"
 done
+exec 9>/run/cmp170-gen2-second-pass.lock
+flock -n 9 || die 'another Gen2 activation or service installation is in progress'
 
 declare -a gpus=()
 declare -A ports=()
@@ -44,7 +46,12 @@ for path in /sys/bus/pci/devices/*; do
     gpus+=("$gpu")
     ports["$gpu"]=$port
 done
-[[ ${#gpus[@]} -eq ${expected_count} ]] || die "detected ${#gpus[@]} CMP 170HX, expected $expected_count; check PCIe enumeration first"
+if [[ $expected_count == auto ]]; then
+    expected_count=${#gpus[@]}
+    [[ $expected_count -gt 0 ]] || die 'no supported CMP 170HX cards detected; nothing to activate'
+    log "automatic inventory: $expected_count CMP 170HX card(s) detected"
+fi
+[[ ${#gpus[@]} -eq ${expected_count} ]] || die "detected ${#gpus[@]} CMP 170HX, expected $expected_count; check PCIe enumeration first, or run install-service.sh auto after verifying the new card inventory"
 
 # Do not reset a card with active CUDA clients or another device-file user.
 if fuser /dev/nvidia* >/dev/null 2>&1; then

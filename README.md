@@ -16,29 +16,47 @@ copying TU102 GPU-register writes into GA100. It retains the CMP 170HX
 protected-register unlock from
 [rjohny55/cmpunlocker](https://github.com/rjohny55/cmpunlocker).
 
-## Run
+## Driver updates, without replacing our fast activation
+
+The upstream driver source is pinned in `vendor/cmpunlocker` to commit
+`17535a0ab1e8d8a9797e096ac5a2495f3da16d2c` (2026-10-05).
+`UPSTREAM.json` records the comparison and important changes: additional SM
+unlocking, CMP-scoped DRAM/SRAM ECC, profiling support, VFIO helpers and driver
+615 compatibility. These are code imports, **not hardware-tested guarantees**.
+ECC and newly enabled SMs need memory/error/stability checks before production.
+
+During a GPU maintenance window, `sudo bash install-driver.sh auto` prepares
+the driver matching the installed NVIDIA userspace version, then installs our
+fast service. It disables the author's hammer service, IOMMU/GRUB modifications
+and VM passthrough setup. The original bounded endpoint-first → FLR → second
+driver pass sequence stays in `scripts/gen2-second-pass.sh`; it is not replaced
+by the author's loop. This command changes kernel modules and initramfs; keep
+recovery access and do not run it while GPU clients/monitoring are active.
+
+## Manual activation
 
 Use a local or SSH shell with recovery access. Stop GPU workloads first. The
-script refuses to continue if NVIDIA device files are in use or if the number
-of enumerated cards differs from the count you supply:
+script refuses to continue if NVIDIA device files are in use. By default it
+automatically processes every supported card enumerated by PCIe:
 
 ```bash
-sudo bash scripts/gen2-second-pass.sh 1
+sudo bash scripts/gen2-second-pass.sh auto
 ```
 
-Replace `1` with the number of CMP 170HX cards physically expected. Install
-the patched driver before running this script. Required commands: `setpci`,
-`nvidia-smi`, `modprobe`, and `fuser`. The manual script does not modify the
+The argument can also be omitted. An explicit positive count, such as `4`,
+optionally enforces an exact PCIe enumeration guard. Install the patched driver
+before running this script. Required commands: `setpci`, `nvidia-smi`,
+`modprobe`, `fuser`, and `flock`. The manual script does not modify the
 driver, change BIOS settings, or reboot the host.
 
 ## Replace the early boot service
 
-After a manual Gen2 test, install the one-shot second-pass service. The count
-is an exact PCIe enumeration guard; use the number of cards physically expected
-to be detected:
+After a manual Gen2 test, install the one-shot second-pass service. Automatic
+inventory is the default and is recalculated at every boot, including systems
+with 1, 2, 4, or 8 supported cards:
 
 ```bash
-sudo bash install-service.sh 1
+sudo bash install-service.sh auto
 sudo systemctl reboot
 ```
 
@@ -51,6 +69,21 @@ has no 600-attempt hammer loop, and has no custom startup timer. After reboot:
 systemctl status cmp170-gen2-second-pass.service
 nvidia-smi --query-gpu=pci.bus_id,memory.total,pcie.link.gen.current,pcie.link.width.current --format=csv
 ```
+
+`sudo bash install-service.sh auto` (or no argument) verifies that supported
+cards exist and saves `CMP170_EXPECTED_GPUS=auto`, not today's card count. No
+reinstallation is needed when cards are added or removed. The unit also defaults
+to `auto` if its optional configuration file is absent. Zero supported cards,
+active GPU clients, invalid bridges and missing FLR support still stop activation.
+Automatic inventory cannot detect a physically installed card that PCIe failed
+to enumerate. For that extra guard, install with an explicit positive count;
+an incorrect count fails before changing any files. Previous fast service,
+script and configuration files are backed up.
+
+On host 200 on 2026-10-07, the driver was installed, but the service failed:
+`detected 4 CMP 170HX, expected 1`. The old `/etc/cmp170-unlock.conf` was stale.
+This is independent of model-loading errors. The server root ports currently
+advertise only x4 width: Gen2 activation cannot make an x4 port become x16.
 
 ## Verified result and limits
 

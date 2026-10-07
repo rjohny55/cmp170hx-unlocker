@@ -1,0 +1,77 @@
+--- a/kernel-open/nvidia/nv-pci.c
++++ b/kernel-open/nvidia/nv-pci.c
+@@ -337,6 +337,52 @@
+ #endif
+ }
+ 
++static void nv_cmp_unlock_bar1_resize(struct pci_dev *pci_dev)
++{
++#if defined(NV_PCI_REBAR_GET_POSSIBLE_SIZES_PRESENT)
++    void __iomem *pcfg;
++    u32 cya, cfg, cap;
++    resource_size_t bar0_start;
++
++    if (pci_dev->device != 0x20C2 && pci_dev->device != 0x2082)
++        return;
++
++    bar0_start = pci_resource_start(pci_dev, 0);
++    if (!bar0_start)
++        return;
++
++    pcfg = ioremap(bar0_start + 0x88000, 0x1000);
++    if (!pcfg) {
++        nv_printf(NV_DBG_ERRORS,
++            "NVRM: CMP BAR1 resize: failed to map XVE registers\n");
++        return;
++    }
++
++    cya = readl(pcfg + 0x724);
++    cfg = readl(pcfg + 0xDCC);
++    cap = readl(pcfg + 0xBBC);
++    nv_printf(NV_DBG_ERRORS,
++        "NVRM: CMP BAR1: before CYA=0x%08x CFG=0x%08x CAP=0x%08x\n",
++        cya, cfg, cap);
++
++    writel(0x30,         pcfg + 0x724);
++    writel(0x8000000A,   pcfg + 0xDCC);
++
++    cya = readl(pcfg + 0x724);
++    cfg = readl(pcfg + 0xDCC);
++    cap = readl(pcfg + 0xBBC);
++    nv_printf(NV_DBG_ERRORS,
++        "NVRM: CMP BAR1: after  CYA=0x%08x CFG=0x%08x CAP=0x%08x\n",
++        cya, cfg, cap);
++
++    iounmap(pcfg);
++
++    NVreg_EnableResizableBar = 1;
++    nv_printf(NV_DBG_ERRORS,
++        "NVRM: CMP BAR1: resize enabled, will attempt up to 64 GB\n");
++#endif
++}
++
+ static int nv_resize_pcie_bars(struct pci_dev *pci_dev) {
+ #if defined(NV_PCI_REBAR_GET_POSSIBLE_SIZES_PRESENT)
+     u16 cmd;
+@@ -2087,12 +2133,21 @@
+         !nv_pci_validate_bars(pci_dev, /* only_bar0 = */ NV_FALSE))
+         goto err_zero_dev;
+ 
++    nv_cmp_unlock_bar1_resize(pci_dev);
++
+     if (nv_resize_pcie_bars(pci_dev)) {
+         nv_printf(NV_DBG_ERRORS,
+             "NVRM: Fatal Error while attempting to resize PCIe BARs.\n");
+         goto err_zero_dev;
+     }
+ 
++    if (pci_dev->device == 0x20C2 || pci_dev->device == 0x2082) {
++        resource_size_t bar1_len = pci_resource_len(pci_dev, NV_GPU_BAR1);
++        nv_printf(NV_DBG_ERRORS,
++            "NVRM: CMP BAR1: final size = %llu MB\n",
++            (unsigned long long)(bar1_len >> 20));
++    }
++
+     nvl->all_mappings_revoked = NV_TRUE;
+     nvl->safe_to_mmap = NV_TRUE;
+     nvl->gpu_wakeup_callback_needed = NV_TRUE;
