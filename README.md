@@ -85,6 +85,17 @@ On host 200 on 2026-10-07, the driver was installed, but the service failed:
 This is independent of model-loading errors. The server root ports currently
 advertise only x4 width: Gen2 activation cannot make an x4 port become x16.
 
+After installing the new driver patches and rebooting on 2026-10-07, the fast
+service automatically detected all four cards and completed successfully in
+48 seconds. All four reached **Gen2 x4**, retained **65536 MiB** each, and Torch
+reported **74 SM per card**, versus **70 SM** before the update. This is a 5.7%
+increase in reported SM count, not a measured 5.7% application speedup. The
+server's DHCP address changed from `192.168.1.200` to `192.168.1.201`; the SSH
+host keys confirmed its identity. The panel and containers returned, and mining
+resumed on all four cards. Sustained stability, actual ECC protection and model
+throughput remain separate validation tasks; the imported ECC reporting
+overrides mean an `Enabled` flag alone is not proof of working ECC.
+
 ## Verified result and limits
 
 On 2026-09-24, one enumerated CMP 170HX (`0000:81:00.0`) on a dual Xeon E5 v4
