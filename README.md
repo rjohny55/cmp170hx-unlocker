@@ -25,6 +25,13 @@ unlocking, CMP-scoped DRAM/SRAM ECC, profiling support, VFIO helpers and driver
 615 compatibility. These are code imports, **not hardware-tested guarantees**.
 ECC and newly enabled SMs need memory/error/stability checks before production.
 
+For driver **615.71.09**, our build additionally serializes PCI device probes.
+The upstream asynchronous probe path produced RM GPU-lock/attach failures on
+the eight-card host 194, with only four cards available after boot. The local
+`cmp-probe-serialized.patch` disables that concurrency for 615 only; it keeps
+all unlock patches and our bounded Gen2 service. Driver 610 builds are unchanged.
+Passing compilation is not a substitute for checking all GPUs after reboot.
+
 During a GPU maintenance window, `sudo bash install-driver.sh auto` prepares
 the driver matching the installed NVIDIA userspace version, then installs our
 fast service. It disables the author's hammer service, IOMMU/GRUB modifications

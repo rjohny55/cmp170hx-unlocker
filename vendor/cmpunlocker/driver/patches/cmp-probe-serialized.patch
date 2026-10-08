@@ -1,0 +1,14 @@
+--- a/kernel-open/nvidia/nv-pci.c
++++ b/kernel-open/nvidia/nv-pci.c
+@@ -3555,7 +3555,10 @@
+     .driver.pm = &nv_pm_ops,
+ #endif
+ #if NV_PCI_ASYNC_PROBE_SUPPORTED
+-    .driver.probe_type = PROBE_PREFER_ASYNCHRONOUS,
++    /* The CMP unlock path is not safe for concurrent RM initialization.
++     * Serialize device probes, including the joined per-GPU kthread,
++     * before the boot-time Gen2 activation service runs. */
++    .driver.probe_type = PROBE_FORCE_SYNCHRONOUS,
+ #else
+     .driver.probe_type = PROBE_FORCE_SYNCHRONOUS,
+ #endif

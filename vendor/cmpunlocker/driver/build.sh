@@ -71,6 +71,11 @@ PATCH_ORDER=(
     ecc-fbpa-static.patch
     ecc-reporting.patch
 )
+# 615 introduced asynchronous PCI probes. CMP unlock initialization touches
+# shared RM state; keep probes serial until this path is concurrency-safe.
+if [[ "${VERSION}" == 615.71.09 ]]; then
+    PATCH_ORDER+=(cmp-probe-serialized.patch)
+fi
 PATCH_FILES=()
 for name in "${PATCH_ORDER[@]}"; do
     p="${PATCH_DIR}/${name}"

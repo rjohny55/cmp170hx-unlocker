@@ -201,6 +201,44 @@ esac''',
         self.assertLess(staging, build.index('depmod -a "${KVER}"'))
         self.assertIn('exit 0', build[staging:build.index('depmod -a "${KVER}"')])
 
+    def test_serial_probe_patch_is_scoped_to_615(self):
+        build = (ROOT / "vendor/cmpunlocker/driver/build.sh").read_text()
+        selection = build[build.index("PATCH_ORDER=("):build.index("PATCH_FILES=()")]
+        for version in ["615.71.09", "610.57.04", "610.43.03", "610.43.02"]:
+            with self.subTest(version=version):
+                result = subprocess.run(
+                    ["bash", "-c", selection + '\nprintf "%s\\n" "${PATCH_ORDER[@]}"'],
+                    env={**os.environ, "VERSION": version},
+                    capture_output=True, text=True, check=True,
+                )
+                patches = result.stdout.splitlines()
+                self.assertEqual("cmp-probe-serialized.patch" in patches, version == "615.71.09")
+                self.assertEqual(len(patches), len(set(patches)))
+                for patch in patches:
+                    self.assertTrue((ROOT / "vendor/cmpunlocker/driver/patches" / patch).is_file())
+
+    def test_serial_probe_patch_preserves_sync_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source = base / "kernel-open/nvidia/nv-pci.c"
+            source.parent.mkdir(parents=True)
+            source.write_text('''    .driver.pm = &nv_pm_ops,
+#endif
+#if NV_PCI_ASYNC_PROBE_SUPPORTED
+    .driver.probe_type = PROBE_PREFER_ASYNCHRONOUS,
+#else
+    .driver.probe_type = PROBE_FORCE_SYNCHRONOUS,
+#endif
+''')
+            patch = ROOT / "vendor/cmpunlocker/driver/patches/cmp-probe-serialized.patch"
+            with patch.open() as stream:
+                result = subprocess.run(["patch", "--batch", "--fuzz=0", "-p1", "-d", str(base)],
+                                        stdin=stream, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            patched = source.read_text()
+            self.assertNotIn("PROBE_PREFER_ASYNCHRONOUS", patched)
+            self.assertEqual(patched.count("PROBE_FORCE_SYNCHRONOUS"), 2)
+
     def test_bash_syntax(self):
         for script in ROOT.rglob("*.sh"):
             if ".git" in script.parts or ".build" in script.parts:
