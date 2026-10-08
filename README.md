@@ -32,6 +32,16 @@ the eight-card host 194, with only four cards available after boot. The local
 all unlock patches and our bounded Gen2 service. Driver 610 builds are unchanged.
 Passing compilation is not a substitute for checking all GPUs after reboot.
 
+On **host 194, 2026-10-08**, upgrading from 610.57.04 to **615.71.09**
+and applying this serialization fix restored all **eight** CMP 170HX after
+reboot. Every card reported **65536 MiB, Gen2 x16, compute capability 8.0,
+and 74 SM** (previously 70). A small Torch CUDA matrix multiplication passed
+on each GPU. `cmp170-gen2-second-pass.service` completed with status 0 using
+automatic inventory; AI Server Manager and the healthy StackShark containers
+restarted. These are startup/smoke checks, not a sustained workload or ECC
+qualification. The previous driver packages, modules, initramfs and service
+configuration were preserved for rollback under `/var/lib/cmp170-unlock/backups/`.
+
 During a GPU maintenance window, `sudo bash install-driver.sh auto` prepares
 the driver matching the installed NVIDIA userspace version, then installs our
 fast service. It disables the author's hammer service, IOMMU/GRUB modifications
@@ -119,7 +129,7 @@ The full GA100 die design has 128 SM, but the shipping A100 exposes 108, not
 128. Our observed 74 SM is approximately 68.5% of the A100's SM count (34 fewer
 SM). Neither this ratio nor the +5.7% count increase is a measured performance
 ratio: clocks, memory bandwidth, enabled features and the workload also matter.
-The observed 74 SM is confirmed on these four cards, not guaranteed for every
+The observed 74 SM is confirmed on the tested cards, not guaranteed for every
 CMP 170HX sample.
 
 Torch confirmed compute capability **8.0** and **74 SM** on every card. FP32
@@ -147,10 +157,11 @@ training. An x4 connection cannot be made x16 by this service.
 
 Isolated tests exercise Gen1-to-Gen2 retraining at x4, x8 and x16, including
 the FLR/second-driver-pass path, and verify that the service writes only the
-speed/retrain masks. Hardware verification with the latest driver is currently
-**four cards at Gen2 x4**. Earlier hardware tests of the same activation
-sequence reached **Gen2 x16**, as recorded below. x8 and the latest driver on
-your next x16 server still need physical verification; use the same patch and
+speed/retrain masks. Hardware verification with the latest patches includes
+**four cards at Gen2 x4 on 610 and eight cards at Gen2 x16 on 615**.
+Earlier hardware tests of the same activation sequence reached **Gen2 x16**,
+as recorded below. x8 and other x16 servers still need physical verification;
+use the same patch and
 `install-service.sh auto`, then check both generation and width:
 
 ```bash
