@@ -1,0 +1,15 @@
+# CPU-only checks and CUDA test-binary compilation. No driver modules loaded.
+ARG TEST_BASE=vllm/vllm-openai@sha256:ff29e51a9457f191deb332b96fa6440584fa941aa2a548449b604e2b1e5e1eeb
+FROM ${TEST_BASE} AS checks
+WORKDIR /cmp170
+ENV PYTHONDONTWRITEBYTECODE=1
+COPY install-driver.sh install-service.sh UPSTREAM.json ./
+COPY scripts ./scripts
+COPY systemd ./systemd
+COPY tests ./tests
+COPY vendor/cmpunlocker ./vendor/cmpunlocker
+COPY README.md ./README.md
+COPY docs ./docs
+RUN python3 -m unittest discover -s tests -v && \
+    nvcc -O2 -arch=sm_80 -o /tmp/cmp170-test-p2p vendor/cmpunlocker/tools/test-p2p.cu && \
+    /tmp/cmp170-test-p2p --help && touch /cmp170-quality-ok

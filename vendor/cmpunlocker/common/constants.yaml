@@ -30,6 +30,23 @@ profiles:
     label: "mixed"
     geometry_rewrite: false
 
+optional_features:
+  p2p:
+    patches:
+      - p2p/0007-p2p-caps.patch
+      - p2p/0011-p2p-bar1.patch
+      - p2p/0013-skip-mailbox-peer-preinit.patch
+      - p2p/0015-bar1p2p-readcap-override.patch
+  hbm_control:
+    patches:
+      - hbm/hbm-control-plm.patch
+    registers:
+      fbpa_mem_plm:  { addr: "0x009a0168", value: "0xffffffff" }
+      fbpa_pll0_plm: { addr: "0x009a3c7c", value: "0xffffffff" }
+      fbpa_pll1_plm: { addr: "0x009a3c80", value: "0xffffffff" }
+      fbpa_pll2_plm: { addr: "0x009a3c84", value: "0xffffffff" }
+      fbpa0_pll_plm: { addr: "0x00903c7c", value: "0xffffffff" }
+
 passthrough:
   module: cmp_no_bus_reset
   gsp_boot_state:

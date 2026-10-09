@@ -7,6 +7,22 @@
   "directory": "vendor/cmpunlocker",
   "integration_changes": "Build-only staging directory and explicit compile-job limit added to driver/build.sh; upstream register patches preserved.",
   "activation": "Root scripts/gen2-second-pass.sh remains authoritative; upstream gen2 hammer disabled by install-driver.sh.",
+  "experimental_features": {
+    "p2p": {
+      "source": "https://github.com/amoghmunikote/cmpunlocker/pull/54",
+      "revision": "b03855bc95be2f815892c5e336152f255d3e6d42",
+      "default_enabled": false,
+      "adaptations": "Four optional patches; preserve 615 chipset-check assignment and IOVAS diagnostics; omit unrelated Blackwell/global ReBAR edits; refuse mixed NVIDIA hosts; actual peer read/write checker.",
+      "hardware_validated": false
+    },
+    "hbm_control": {
+      "source": "https://github.com/amoghmunikote/cmpunlocker/pull/60",
+      "revision": "6e0d2e3ca3124c743233065dada24097a2e93e32",
+      "default_enabled": false,
+      "adaptations": "Optional patch opens five HBM PLMs and sizes the PLM loop from its table only when enabled. No frequency/timing changes, 170tune installation or idle-power daemon.",
+      "hardware_validated": false
+    }
+  },
   "changes": [
     {"commit": "6c442ee", "effect": "Additional SM/TPC floorsweep restoration; hardware validation required."},
     {"commit": "3c52ad3", "effect": "DRAM/SRAM ECC enablement and reporting; may affect usable memory and performance."},

@@ -1,0 +1,6 @@
+.git
+**/__pycache__
+**/.pytest_cache
+vendor/cmpunlocker/driver/.build
+vendor/cmpunlocker/.p2p-test-*
+vendor/cmpunlocker/logs

@@ -1,0 +1,27 @@
+CMP P2P capability override, ported from cmpUnlockForceP2PCaps() in
+cmpunlocker-p2p/driver/src/cmpunlock.c. Applied only when --p2p is enabled.
+Keep this inline to fit cmpunlocker-0.4's patch-based unlock implementation;
+no dependency on the other branch's cmpunlock.c or generated config header.
+Minimal unchanged assignment context works on 610 and 615; preserves 615's
+bPcieP2PSkipChipsetCheck assignment and does not replace a following function.
+
+--- a/src/nvidia/src/kernel/gpu/gpu.c
++++ b/src/nvidia/src/kernel/gpu/gpu.c
+@@ -2515,4 +2515,17 @@
+     NV_ASSERT_OR_RETURN_VOID(status == NV_OK);
+ 
++    // cmpunlocker --p2p: override the GSP restriction on CMP cards only.
++    // A capability report is not a substitute for testing real transfers.
++    {
++        NvU32 cmpDevId = pGpu->idInfo.PCIDeviceID >> 16;
++        if (cmpDevId == 0x20C2 || cmpDevId == 0x2082)
++        {
++            p2pCapsParams.p2pReadCapsStatus = 0;  // NV0000_P2P_CAPS_STATUS_OK
++            p2pCapsParams.p2pWriteCapsStatus = 0; // NV0000_P2P_CAPS_STATUS_OK
++            NV_PRINTF(LEVEL_ERROR,
++                      "CMPUNLOCK: PCIe P2P caps forced to OK (--p2p)\n");
++        }
++    }
++
+     pGpu->pcieP2PReadCaps = p2pCapsParams.p2pReadCapsStatus;
+     pGpu->pcieP2PWriteCaps = p2pCapsParams.p2pWriteCapsStatus;

@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mapfile -t SUPPORTED_VERSIONS < <(grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' "${SCRIPT_DIR}/VERSION")
 DEFAULT_VERSION="${SUPPORTED_VERSIONS[0]:-}"
 VERSION="${CMPUNLOCKER_DRIVER_VERSION:-${DEFAULT_VERSION}}"
+ENABLE_P2P="${CMPUNLOCKER_ENABLE_P2P:-0}"
+ENABLE_HBM="${CMPUNLOCKER_ENABLE_HBM:-0}"
 PATCH_DIR="${SCRIPT_DIR}/patches"
 BUILD_ROOT="${CMPUNLOCKER_BUILD_DIR:-${SCRIPT_DIR}/.build}"
 SRC_NAME="open-gpu-kernel-modules-${VERSION}"
@@ -15,6 +17,8 @@ KVER="$(uname -r)"
 KSRC="/lib/modules/${KVER}/build"
 STAGE_DIR="${CMPUNLOCKER_STAGE_DIR:-}"
 INSTALL_MOD_DIR="/lib/modules/${KVER}/updates/cmpunlocker"
+PREVIOUS_P2P="$(cat "${INSTALL_MOD_DIR}/p2p_enabled" 2>/dev/null || true)"
+PREVIOUS_HBM="$(cat "${INSTALL_MOD_DIR}/hbm_control_enabled" 2>/dev/null || true)"
 if [[ -n "${STAGE_DIR}" ]]; then
     # Integration-only option: build inactive modules without modifying the
     # loaded driver, depmod, DKMS or initramfs. Deployment verifies them first.
@@ -36,6 +40,16 @@ ok()   { echo -e "${GREEN}[ OK ]${NC}  $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 die()  { echo -e "${RED}[FAIL]${NC}  $*" >&2; exit 1; }
 
+case "${ENABLE_P2P}" in
+    0|1) ;;
+    *) die 'CMPUNLOCKER_ENABLE_P2P must be 0 or 1' ;;
+esac
+case "${ENABLE_HBM}" in
+    0|1) ;;
+    *) die 'CMPUNLOCKER_ENABLE_HBM must be 0 or 1' ;;
+esac
+source "${SCRIPT_DIR}/../common/p2p.sh"
+
 version_supported() {
     local v="$1"
     local s
@@ -46,6 +60,15 @@ version_supported() {
 }
 
 [[ "${EUID}" -eq 0 ]] || die "Run as root: sudo ${SCRIPT_DIR}/build.sh"
+if [[ "${ENABLE_P2P}" -eq 1 && -z "${STAGE_DIR}" ]]; then
+    cmp_p2p_check_host || die 'P2P host preflight failed'
+fi
+if [[ -z "${STAGE_DIR}" && ( "${ENABLE_P2P}" -eq 1 || "${PREVIOUS_P2P}" == 1 ) ]]; then
+    cmp_p2p_check_modprobe_options || die 'P2P module-option preflight failed'
+fi
+if [[ -z "${STAGE_DIR}" && ( "${ENABLE_P2P}" -eq 1 || "${PREVIOUS_P2P}" == 1 || "${ENABLE_HBM}" -eq 1 || "${PREVIOUS_HBM}" == 1 ) ]]; then
+    cmp_p2p_require_idle || die 'Experimental GPU-client preflight failed'
+fi
 [[ -n "${VERSION}" ]] || die "No driver version set (driver/VERSION empty and CMPUNLOCKER_DRIVER_VERSION unset)"
 version_supported "${VERSION}" || die "Unsupported driver version '${VERSION}' (supported: ${SUPPORTED_VERSIONS[*]})"
 [[ -d "${PATCH_DIR}" ]] || die "Missing patches directory: ${PATCH_DIR}"
@@ -76,6 +99,23 @@ PATCH_ORDER=(
 if [[ "${VERSION}" == 615.71.09 ]]; then
     PATCH_ORDER+=(cmp-probe-serialized.patch)
 fi
+P2P_PATCH_ORDER=(
+    p2p/0007-p2p-caps.patch
+    p2p/0011-p2p-bar1.patch
+    p2p/0013-skip-mailbox-peer-preinit.patch
+    p2p/0015-bar1p2p-readcap-override.patch
+)
+if [[ "${ENABLE_P2P}" -eq 1 ]]; then
+    PATCH_ORDER+=("${P2P_PATCH_ORDER[@]}")
+    warn 'Experimental GPU-to-GPU BAR1 P2P enabled; capability reports do not prove real transfers'
+fi
+HBM_PATCH_ORDER=(
+    hbm/hbm-control-plm.patch
+)
+if [[ "${ENABLE_HBM}" -eq 1 ]]; then
+    PATCH_ORDER+=("${HBM_PATCH_ORDER[@]}")
+    warn 'Experimental HBM register access enabled; no memory frequency, refresh or timing values changed'
+fi
 PATCH_FILES=()
 for name in "${PATCH_ORDER[@]}"; do
     p="${PATCH_DIR}/${name}"
@@ -96,7 +136,7 @@ CONSTANTS="${SCRIPT_DIR}/../common/constants.yaml"
 CONSTANTS_ENV="$(python3 "${SCRIPT_DIR}/../tools/read-constants.py" "${CONSTANTS}" "${PATCH_DIR}" "${SCRIPT_DIR}/build.sh" "${PROFILE}")" || die "common/constants.yaml rejected (see error above)"
 eval "${CONSTANTS_ENV}"
 
-BUILD_STAMP="${VERSION}:${KVER}:${PROFILE}:${PATCH_HASH}:$(sha256sum "${SCRIPT_DIR}/build.sh" | cut -d' ' -f1)"
+BUILD_STAMP="${VERSION}:${KVER}:${PROFILE}:p2p=${ENABLE_P2P}:hbm=${ENABLE_HBM}:${PATCH_HASH}:$(sha256sum "${SCRIPT_DIR}/build.sh" | cut -d' ' -f1)"
 
 mkdir -p "${BUILD_ROOT}"
 
@@ -129,7 +169,11 @@ else
     cd "${SRC_DIR}"
     for i in "${!PATCH_ORDER[@]}"; do
         info "  ${PATCH_ORDER[$i]}"
-        patch -p1 < "${PATCH_FILES[$i]}"
+        if [[ "${PATCH_ORDER[$i]}" == p2p/* || "${PATCH_ORDER[$i]}" == hbm/* ]]; then
+            patch --batch --forward --fuzz=0 -p1 < "${PATCH_FILES[$i]}"
+        else
+            patch --batch --forward -p1 < "${PATCH_FILES[$i]}"
+        fi
     done
     ok "All patches applied"
 
@@ -234,28 +278,40 @@ for ko in "${KO_FILES[@]}"; do
 done
 
 if [[ -n "${STAGE_DIR}" ]]; then
+    printf '%s\n' "${ENABLE_P2P}" > "${INSTALL_MOD_DIR}/p2p_enabled"
+    printf '%s\n' "${ENABLE_HBM}" > "${INSTALL_MOD_DIR}/hbm_control_enabled"
     ok "Modules staged at ${INSTALL_MOD_DIR}; running driver, depmod and initramfs unchanged"
     exit 0
 fi
+
+REGISTRY_DWORDS="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"
+if [[ "${ENABLE_P2P}" -eq 1 ]]; then
+    REGISTRY_DWORDS+=";RMForceStaticBar1=1;RMPcieP2PType=1"
+fi
+mkdir -p /etc/modprobe.d
+printf 'options nvidia NVreg_RegistryDwords="%s"\n' "${REGISTRY_DWORDS}" \
+    > /etc/modprobe.d/cmp-pcie-gen2.conf
+printf '%s\n' "${ENABLE_P2P}" > "${INSTALL_MOD_DIR}/p2p_enabled"
+printf '%s\n' "${ENABLE_HBM}" > "${INSTALL_MOD_DIR}/hbm_control_enabled"
 
 depmod -a "${KVER}"
 ok "depmod complete"
 rebuild_initramfs() {
     if command -v update-initramfs &>/dev/null; then
         info "Rebuilding initramfs (update-initramfs)..."
-        update-initramfs -u -k "${KVER}"
+        update-initramfs -u -k "${KVER}" || return 1
         ok "initramfs rebuilt"
         return 0
     fi
     if command -v dracut &>/dev/null; then
         info "Rebuilding initramfs (dracut)..."
-        dracut --force --kver "${KVER}"
+        dracut --force --kver "${KVER}" || return 1
         ok "initramfs rebuilt"
         return 0
     fi
     if command -v mkinitcpio &>/dev/null; then
         info "Rebuilding initramfs (mkinitcpio)..."
-        mkinitcpio -P
+        mkinitcpio -P || return 1
         ok "initramfs rebuilt"
         return 0
     fi
@@ -263,7 +319,16 @@ rebuild_initramfs() {
     return 1
 }
 
-rebuild_initramfs || true
+if ! rebuild_initramfs; then
+    if [[ "${ENABLE_P2P}" -eq 1 || "${PREVIOUS_P2P}" == 1 || "${ENABLE_HBM}" -eq 1 || "${PREVIOUS_HBM}" == 1 ]]; then
+        die 'Modules installed, but initramfs was not rebuilt; fix it before cold booting'
+    fi
+    warn 'Modules installed; rebuild initramfs manually before rebooting'
+fi
+if [[ "${ENABLE_P2P}" -eq 1 || "${PREVIOUS_P2P}" == 1 || "${ENABLE_HBM}" -eq 1 || "${PREVIOUS_HBM}" == 1 ]]; then
+    ok "P2P=${ENABLE_P2P}, HBM control=${ENABLE_HBM} installed for next cold boot; skipping live module reload"
+    exit 0
+fi
 resolved="$(modprobe -n -v nvidia 2>/dev/null | awk '/insmod/ {print $2; exit}' || true)"
 if [[ -n "${resolved}" ]]; then
     info "modprobe will load: ${resolved}"

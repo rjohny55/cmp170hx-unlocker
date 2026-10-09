@@ -9,6 +9,8 @@ mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/install_$(date +%Y%m%d_%H%M%S).log"
 
 PROFILE_OVERRIDE=""
+ENABLE_P2P=0
+ENABLE_HBM=0
 CONFIGURE_IOMMU=1
 CONFIGURE_GEN2_SERVICE=1
 CONFIGURE_PASSTHROUGH=1
@@ -16,16 +18,27 @@ for arg in "$@"; do
     case "${arg}" in
         --profile=8gb|--profile=8GB) PROFILE_OVERRIDE="8gb" ;;
         --profile=10gb|--profile=10GB) PROFILE_OVERRIDE="10gb" ;;
+        --p2p) ENABLE_P2P=1 ;;
+        --no-p2p) ENABLE_P2P=0 ;;
+        --hbm-control) ENABLE_HBM=1 ;;
+        --no-hbm-control) ENABLE_HBM=0 ;;
         --no-iommu) CONFIGURE_IOMMU=0 ;;
         --no-gen2-service) CONFIGURE_GEN2_SERVICE=0 ;;
         --no-passthrough) CONFIGURE_PASSTHROUGH=0 ;;
         -h|--help)
             cat <<'EOF'
 Usage: sudo ./install.sh [--profile=8gb|10gb] [--no-iommu] [--no-gen2-service]
-                        [--no-passthrough]
+                        [--no-passthrough] [--p2p|--no-p2p] [--hbm-control|--no-hbm-control]
 
   --profile=8gb   Force 8GB metadata label (geometry is still chosen per PCI ID)
   --profile=10gb  Force 10GB metadata label (geometry is still chosen per PCI ID)
+  --p2p          Experimental BAR1 P2P (default: off); cold boot and real peer
+                 transfers required. Does not disable IOMMU or change BIOS.
+  --no-p2p       Rebuild without P2P; cold boot required after disabling it.
+  --hbm-control  Experimental HBM clock/refresh privilege masks (default: off).
+                 Does not set clocks/timings or install an idle daemon.
+  --no-hbm-control
+                 Rebuild without the HBM experiment; cold boot required.
   --no-iommu      Do not touch the kernel command line (leave IOMMU settings alone)
   --no-gen2-service
                   Do not install the early-boot PCIe Gen2 retrain service
@@ -64,6 +77,18 @@ step_init 7
 step "Verifying root privileges"
 [[ "${EUID}" -eq 0 ]] || die "Run as root: sudo ./install.sh"
 ok "Running as root"
+
+# Experimental driver permissions must not be installed over live clients.
+# Check before package/DKMS changes as well as inside the low-level build.
+source "${SCRIPT_DIR}/common/p2p.sh"
+PREVIOUS_P2P=$(cat "/lib/modules/$(uname -r)/updates/cmpunlocker/p2p_enabled" 2>/dev/null || true)
+PREVIOUS_HBM=$(cat "/lib/modules/$(uname -r)/updates/cmpunlocker/hbm_control_enabled" 2>/dev/null || true)
+if [[ ${ENABLE_P2P} == 1 ]]; then
+    cmp_p2p_check_host || die 'Experimental P2P host preflight failed'
+fi
+if [[ ${ENABLE_P2P} == 1 || ${ENABLE_HBM} == 1 || ${PREVIOUS_P2P} == 1 || ${PREVIOUS_HBM} == 1 ]]; then
+    cmp_p2p_require_idle || die 'Experimental GPU-client preflight failed'
+fi
 
 step "Detecting CMP 170HX GPU(s)"
 mapfile -t PCI_LINES < <(lspci -nn 2>/dev/null | grep -iE '10de:20b0|10de:20c2|10de:2082' || true)
@@ -229,6 +254,8 @@ chmod +x "${SCRIPT_DIR}/driver/build.sh"
 CMPUNLOCKER_DRIVER_VERSION="${detected}" \
 CMPUNLOCKER_CARD_PROFILE="${CARD_PROFILE}" \
 CMPUNLOCKER_GPU_INVENTORY="${CMPUNLOCKER_GPU_INVENTORY}" \
+CMPUNLOCKER_ENABLE_P2P="${ENABLE_P2P}" \
+CMPUNLOCKER_ENABLE_HBM="${ENABLE_HBM}" \
     "${SCRIPT_DIR}/driver/build.sh"
 ok "Patched modules installed (profile ${CARD_PROFILE})"
 
@@ -247,10 +274,8 @@ else
 fi
 
 info "Configuring PCIe Gen2"
-cat > /etc/modprobe.d/cmp-pcie-gen2.conf <<'EOF'
-options nvidia NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"
-EOF
-ok "Wrote /etc/modprobe.d/cmp-pcie-gen2.conf"
+# driver/build.sh writes one combined Gen2/P2P option before initramfs.
+# Never overwrite it here: duplicate RegistryDwords can disable P2P silently.
 
 for legacy_unit in cmpretrain.service cmp-gen2-retrain.service; do
     systemctl disable --now "${legacy_unit}" 2>/dev/null || true

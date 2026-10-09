@@ -29,11 +29,11 @@ def present(blob_lower, value):
     return any(re.search(re.escape(f) + r"u?\b", blob_lower) for f in forms)
 
 
-def read_patch_order(build_sh):
+def read_patch_order(build_sh, array="PATCH_ORDER"):
     text = io.open(build_sh, encoding="utf-8").read()
-    m = re.search(r"PATCH_ORDER=\(\n(.*?)\n\)", text, re.S)
+    m = re.search(re.escape(array) + r"=\(\n(.*?)\n\)", text, re.S)
     if not m:
-        sys.exit("error: PATCH_ORDER not found in %s" % build_sh)
+        sys.exit("error: %s not found in %s" % (array, build_sh))
     return [l.strip() for l in m.group(1).splitlines() if l.strip()]
 
 
@@ -64,6 +64,25 @@ def main():
     declared = {u["patch"] for u in unlocks.values() if u.get("patch")}
 
     problems = []
+    for feature, array in (("p2p", "P2P_PATCH_ORDER"), ("hbm_control", "HBM_PATCH_ORDER")):
+        config = (c.get("optional_features") or {}).get(feature) or {}
+        optional = config.get("patches")
+        selected_optional = read_patch_order(build_sh, array)
+        if optional != selected_optional or len(selected_optional) != len(set(selected_optional)):
+            problems.append("optional %s manifest does not match %s" % (feature, array))
+        blobs = []
+        for name in selected_optional:
+            path = os.path.join(patch_dir, name)
+            if not os.path.isfile(path):
+                problems.append("optional %s patch missing: %s" % (feature, name))
+            else:
+                blobs.append(io.open(path, encoding="utf-8").read().lower())
+        blob = "\n".join(blobs)
+        for rname, register in (config.get("registers") or {}).items():
+            for key in ("addr", "value"):
+                value = register.get(key)
+                if not value or not present(blob, value):
+                    problems.append("optional %s: %s %s not found in patches" % (feature, rname, key))
     for name in sorted(set(order) - declared):
         problems.append("patch %s is built but not declared in constants.yaml"
                         % name)

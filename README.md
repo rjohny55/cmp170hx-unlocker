@@ -50,6 +50,20 @@ driver pass sequence stays in `scripts/gen2-second-pass.sh`; it is not replaced
 by the author's loop. This command changes kernel modules and initramfs; keep
 recovery access and do not run it while GPU clients/monitoring are active.
 
+## Optional experiments: P2P and HBM control
+
+Both modes are **disabled by default**. Ordinary `install-driver.sh auto` does
+not add the optional P2P or HBM patches. Our fast Gen2 activation is unchanged.
+The two features are independent and require explicit installer flags:
+`--p2p` and `--hbm-control`. They are not automatically activated or tested.
+
+P2P adds experimental BAR1 peer mapping and a real CUDA read/write checker.
+HBM control only opens the clock/refresh privilege masks from upstream PR #60;
+it does **not** change clock, refresh or timing values, install `170tune`, or
+enable an idle-power service. See [experimental modes and test checklist](docs/EXPERIMENTAL.md)
+for the opt-in, cold-boot, verification and disable procedures. These modes
+have source-context and offline checks, **not hardware qualification**.
+
 ## Manual activation
 
 Use a local or SSH shell with recovery access. Stop GPU workloads first. The
