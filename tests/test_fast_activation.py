@@ -9,6 +9,22 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class FastActivationTests(unittest.TestCase):
+    def test_inactive_kernel_requires_staging_before_any_build(self):
+        build = ROOT / "vendor/cmpunlocker/driver/build.sh"
+        for release, message in [
+            ("7.0.0-38-inactive-fixture", "inactive kernel requires"),
+            ("../../boot", "valid kernel release"),
+            ("7.0.0-38\nother", "valid kernel release"),
+        ]:
+            with self.subTest(release=release):
+                env = dict(os.environ, CMPUNLOCKER_KERNEL_VERSION=release)
+                env.pop("CMPUNLOCKER_STAGE_DIR", None)
+                result = subprocess.run(["bash", str(build)], env=env,
+                                        capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+                self.assertNotIn("Building modules", result.stdout)
+
     def test_inventory_counts_only_supported_cards(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

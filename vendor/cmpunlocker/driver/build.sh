@@ -13,9 +13,18 @@ SRC_NAME="open-gpu-kernel-modules-${VERSION}"
 SRC_DIR="${BUILD_ROOT}/${SRC_NAME}"
 TARBALL="${BUILD_ROOT}/${SRC_NAME}.tar.gz"
 TARBALL_URL="https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${VERSION}.tar.gz"
-KVER="$(uname -r)"
+RUNNING_KVER="$(uname -r)"
+KVER="${CMPUNLOCKER_KERNEL_VERSION:-${RUNNING_KVER}}"
+[[ -z "${CMPUNLOCKER_KERNEL_VERSION:-}" || "${KVER}" =~ ^[0-9]+\.[0-9]+\.[0-9]+[-._+a-zA-Z0-9]*$ ]] || {
+    echo 'CMPUNLOCKER_KERNEL_VERSION must be a valid kernel release, not a path' >&2
+    exit 1
+}
 KSRC="/lib/modules/${KVER}/build"
 STAGE_DIR="${CMPUNLOCKER_STAGE_DIR:-}"
+if [[ "${KVER}" != "${RUNNING_KVER}" && -z "${STAGE_DIR}" ]]; then
+    echo 'Building for an inactive kernel requires CMPUNLOCKER_STAGE_DIR; live installation/reload is refused' >&2
+    exit 1
+fi
 INSTALL_MOD_DIR="/lib/modules/${KVER}/updates/cmpunlocker"
 PREVIOUS_P2P="$(cat "${INSTALL_MOD_DIR}/p2p_enabled" 2>/dev/null || true)"
 PREVIOUS_HBM="$(cat "${INSTALL_MOD_DIR}/hbm_control_enabled" 2>/dev/null || true)"
