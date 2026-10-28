@@ -68,6 +68,27 @@ driver pass sequence stays in `scripts/gen2-second-pass.sh`; it is not replaced
 by the author's loop. This command changes kernel modules and initramfs; keep
 recovery access and do not run it while GPU clients/monitoring are active.
 
+### Build for an installed but not yet running HWE kernel
+
+`driver/build.sh` accepts `CMPUNLOCKER_KERNEL_VERSION` to compile against
+`/lib/modules/<release>/build` instead of the running kernel. When the target
+is not running, `CMPUNLOCKER_STAGE_DIR` is mandatory: no driver reload, depmod
+or initramfs update occurs. Install matching Ubuntu image/headers first, keep
+the old kernel as a recovery option, and verify every staged module's version
+and vermagic before deploying. A staged build alone does not prove GPU operation.
+
+```bash
+sudo env CMPUNLOCKER_DRIVER_VERSION=615.71.09 \
+  CMPUNLOCKER_KERNEL_VERSION=7.0.0-38-generic \
+  CMPUNLOCKER_STAGE_DIR=/var/lib/cmp170-unlock/staged-7.0/modules \
+  CMPUNLOCKER_BUILD_DIR=/var/lib/cmp170-unlock/staged-7.0/build \
+  CMPUNLOCKER_MAX_JOBS=16 \
+  bash vendor/cmpunlocker/driver/build.sh
+```
+
+The kernel release above is an example, not a pinned recommendation; use the
+exact supported HWE release installed from your Ubuntu repository.
+
 ## Optional experiments: P2P and HBM control
 
 Both modes are **disabled by default**. Ordinary `install-driver.sh auto` does
