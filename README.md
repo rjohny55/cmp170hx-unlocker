@@ -16,6 +16,22 @@ copying TU102 GPU-register writes into GA100. It retains the CMP 170HX
 protected-register unlock from
 [rjohny55/cmpunlocker](https://github.com/rjohny55/cmpunlocker).
 
+## Ordinary NVIDIA cards and mixed-GPU hosts
+
+The CMP unlock, Gen2 defaults and ReBAR opt-in target only NVIDIA PCI device
+IDs `20c2` / `2082`. An RTX 4090 does not inherit these CMP settings, even when
+it replaces a CMP in the same slot. Without a supported CMP, automatic
+installation and boot activation skip without changing the driver or PCI
+registers. On mixed hosts, the helper refuses the global driver-unload/FLR
+second pass; optional experimental P2P installation also refuses mixed hosts.
+
+There is still **one shared, patched NVIDIA module**, not a separate stock
+driver for ordinary cards. This release scopes CMP behavior; it does not certify
+all RTX cards, mixed topologies or modified-memory cards. RTX 4090 48 GB Gen4
+x16 and short CUDA/LLM checks passed on the tested host, but subsequent GPU
+timeouts remain unresolved. See [mixed-GPU behavior](docs/mixed-gpu.md) and
+[the dated validation record](docs/host168-scope-20261028.md) before deployment.
+
 ## Driver updates, without replacing our fast activation
 
 The upstream driver source is pinned in `vendor/cmpunlocker` to commit
