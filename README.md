@@ -25,10 +25,12 @@ unlocking, CMP-scoped DRAM/SRAM ECC, profiling support, VFIO helpers and driver
 615 compatibility. These are code imports, **not hardware-tested guarantees**.
 ECC and newly enabled SMs need memory/error/stability checks before production.
 
-For driver **615.71.09**, our build additionally serializes PCI device probes.
+For driver **615.71.09**, our build additionally serializes PCI device probes
+when a supported CMP is present; RTX-only hosts retain upstream asynchronous
+probing.
 The upstream asynchronous probe path produced RM GPU-lock/attach failures on
 the eight-card host 194, with only four cards available after boot. The local
-`cmp-probe-serialized.patch` disables that concurrency for 615 only; it keeps
+`cmp-probe-serialized.patch` disables that concurrency for 615 with CMP only; it keeps
 all unlock patches and our bounded Gen2 service. Driver 610 builds are unchanged.
 Passing compilation is not a substitute for checking all GPUs after reboot.
 
@@ -104,8 +106,10 @@ nvidia-smi --query-gpu=pci.bus_id,memory.total,pcie.link.gen.current,pcie.link.w
 `sudo bash install-service.sh auto` (or no argument) verifies that supported
 cards exist and saves `CMP170_EXPECTED_GPUS=auto`, not today's card count. No
 reinstallation is needed when cards are added or removed. The unit also defaults
-to `auto` if its optional configuration file is absent. Zero supported cards,
-active GPU clients, invalid bridges and missing FLR support still stop activation.
+to `auto` if its optional configuration file is absent. Zero supported cards in
+automatic mode produce a successful no-op; explicit nonzero inventory still fails
+if cards are missing. Active GPU clients, invalid bridges and missing FLR support
+stop activation.
 Automatic inventory cannot detect a physically installed card that PCIe failed
 to enumerate. For that extra guard, install with an explicit positive count;
 an incorrect count fails before changing any files. Previous fast service,

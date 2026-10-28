@@ -37,6 +37,7 @@ optional_features:
       - p2p/0011-p2p-bar1.patch
       - p2p/0013-skip-mailbox-peer-preinit.patch
       - p2p/0015-bar1p2p-readcap-override.patch
+      - p2p/0016-device-options.patch
   hbm_control:
     patches:
       - hbm/hbm-control-plm.patch
@@ -112,6 +113,10 @@ unlocks:
 
   bar1_resize:
     patch: bar1-resize-unlock.patch
+    registers: {}
+
+  device_options:
+    patch: cmp-device-options.patch
     registers: {}
 
   gpu_name:

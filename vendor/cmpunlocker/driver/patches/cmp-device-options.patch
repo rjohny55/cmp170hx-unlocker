@@ -1,0 +1,19 @@
+CMP settings are per GPU, not shared NVreg_RegistryDwords or cached PCI BDFs.
+Explicit user per-device options are still parsed afterwards by NVIDIA.
+
+--- a/kernel-open/nvidia/nv-pci.c
++++ b/kernel-open/nvidia/nv-pci.c
+@@ -2195,3 +2195,13 @@
+     nv_init_tegra_gpu_pg_mask(sp, pci_dev);
+
++    /* CMP170_DEVICE_OPTIONS: defaults belong only to this CMP device. */
++    if (nv->pci_info.vendor_id == PCI_VENDOR_ID_NVIDIA &&
++        (nv->pci_info.device_id == 0x20C2 ||
++         nv->pci_info.device_id == 0x2082))
++    {
++        rm_write_registry_dword(sp, nv, "RmForceEnableGen2", 1);
++        rm_write_registry_dword(sp, nv, "RMPcieLinkSpeed", 1);
++        /* CMP170_OPTIONAL_P2P_DEFAULTS */
++    }
++
+     rm_get_gpu_uuid_raw(sp, nv);

@@ -274,8 +274,8 @@ else
 fi
 
 info "Configuring PCIe Gen2"
-# driver/build.sh writes one combined Gen2/P2P option before initramfs.
-# Never overwrite it here: duplicate RegistryDwords can disable P2P silently.
+# driver/build.sh migrates old global options before rebuilding initramfs.
+# Gen2/P2P defaults now belong to the driver's current-device CMP gate.
 
 for legacy_unit in cmpretrain.service cmp-gen2-retrain.service; do
     systemctl disable --now "${legacy_unit}" 2>/dev/null || true

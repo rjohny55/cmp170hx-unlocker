@@ -5,7 +5,7 @@
   "comparison_base": "8f3c82f",
   "imported_at": "2026-10-07",
   "directory": "vendor/cmpunlocker",
-  "integration_changes": "Build-only staging directory and explicit compile-job limit added to driver/build.sh; upstream register patches preserved.",
+  "integration_changes": "Build-only staging, explicit compile-job limit and inactive-kernel staging guards; current-device CMP-only Gen2/ReBAR options, conditional 615 synchronous probing when CMP is present, no-CMP installer skips and managed global-option migration. Upstream SM/ECC register patches preserved.",
   "activation": "Root scripts/gen2-second-pass.sh remains authoritative; upstream gen2 hammer disabled by install-driver.sh.",
   "experimental_features": {
     "p2p": {

@@ -1,14 +1,23 @@
 --- a/kernel-open/nvidia/nv-pci.c
 +++ b/kernel-open/nvidia/nv-pci.c
-@@ -3555,7 +3555,10 @@
-     .driver.pm = &nv_pm_ops,
- #endif
- #if NV_PCI_ASYNC_PROBE_SUPPORTED
--    .driver.probe_type = PROBE_PREFER_ASYNCHRONOUS,
-+    /* The CMP unlock path is not safe for concurrent RM initialization.
-+     * Serialize device probes, including the joined per-GPU kthread,
-+     * before the boot-time Gen2 activation service runs. */
-+    .driver.probe_type = PROBE_FORCE_SYNCHRONOUS,
- #else
-     .driver.probe_type = PROBE_FORCE_SYNCHRONOUS,
- #endif
+@@ -3280,3 +3280,20 @@
+     }
+
++#if NV_PCI_ASYNC_PROBE_SUPPORTED
++    /* Keep NVIDIA's ordinary probe policy on hosts without CMP170.
++     * A CMP still requires the validated serial RM initialization order. */
++    {
++        struct pci_dev *cmp;
++        nv_pci_driver.driver.probe_type = PROBE_PREFER_ASYNCHRONOUS;
++        cmp = pci_get_device(PCI_VENDOR_ID_NVIDIA, 0x20C2, NULL);
++        if (cmp == NULL)
++            cmp = pci_get_device(PCI_VENDOR_ID_NVIDIA, 0x2082, NULL);
++        if (cmp != NULL)
++        {
++            nv_pci_driver.driver.probe_type = PROBE_FORCE_SYNCHRONOUS;
++            pci_dev_put(cmp);
++        }
++    }
++#endif
++
+     smp_store_release(&nv_pci_driver_registration_in_progress, NV_TRUE);

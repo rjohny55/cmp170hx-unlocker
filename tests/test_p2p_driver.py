@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1] / "vendor/cmpunlocker"
 P2P_NAMES = (
     "0007-p2p-caps.patch", "0011-p2p-bar1.patch",
     "0013-skip-mailbox-peer-preinit.patch", "0015-bar1p2p-readcap-override.patch",
+    "0016-device-options.patch",
 )
 
 
@@ -189,10 +190,9 @@ class P2PIntegration(unittest.TestCase):
 
     def test_default_and_empty_disable_all_p2p_patches(self):
         events = self.successful_build()
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 15)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 16)
         self.assertEqual((self.moddir / "p2p_enabled").read_text(), "0\n")
-        self.assertEqual(self.conf.read_text(),
-                         'options nvidia NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"\n')
+        self.assertFalse(self.conf.exists())
         self.assertFalse(any(e["cmd"] == "patch" for e in self.successful_build("")))
 
     def test_toggle_invalidates_cache_and_config_precedes_initramfs(self):
@@ -201,22 +201,21 @@ class P2PIntegration(unittest.TestCase):
         disabled_stamp = stamp.read_text()
         events = self.successful_build("1")
         patches = [e for e in events if e["cmd"] == "patch"]
-        self.assertEqual(len(patches), 19)
-        for event, name in zip(patches[-4:], P2P_NAMES):
+        self.assertEqual(len(patches), 21)
+        for event, name in zip(patches[-5:], P2P_NAMES):
             data = (self.project / "driver/patches/p2p" / name).read_bytes()
             self.assertEqual(event["sha256"], hashlib.sha256(data).hexdigest())
             self.assertIn("--fuzz=0", event["args"])
         self.assertNotEqual(stamp.read_text(), disabled_stamp)
         self.assertEqual((self.moddir / "p2p_enabled").read_text(), "1\n")
         init = next(e for e in events if e["cmd"] == "update-initramfs")
-        self.assertIn(";RMForceStaticBar1=1;RMPcieP2PType=1", init["config"])
+        self.assertIsNone(init["config"])
         self.assertFalse(any(e["cmd"] == "modprobe" for e in events))
         self.assertFalse(any(e["cmd"] == "patch" for e in self.successful_build("1")))
         events = self.successful_build("0")
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 15)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 16)
         self.assertEqual(stamp.read_text(), disabled_stamp)
-        self.assertNotIn("P2P", self.conf.read_text())
-        self.assertNotIn("StaticBar1", self.conf.read_text())
+        self.assertFalse(self.conf.exists())
         self.assertFalse(any(e["cmd"] == "modprobe" for e in events))
 
     def test_patch_edit_invalidates_cached_build(self):
@@ -224,7 +223,7 @@ class P2PIntegration(unittest.TestCase):
         patch = self.project / "driver/patches/p2p/0011-p2p-bar1.patch"
         patch.write_text("Fixture revision\n" + patch.read_text())
         events = self.successful_build("1")
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 19)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 21)
 
     def test_failed_patch_never_installs_or_stamps_partial_build(self):
         result = self.run_script(CMPUNLOCKER_ENABLE_P2P="1",
@@ -235,7 +234,7 @@ class P2PIntegration(unittest.TestCase):
         self.assertFalse((self.moddir / "p2p_enabled").exists())
         self.assertFalse(any(e["cmd"] == "make" for e in self.events(clear=True)))
         events = self.successful_build("1")
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 19)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 21)
 
     def test_staging_can_build_p2p_without_gpus_and_never_activates(self):
         for gpu in self.sysfs.iterdir():
@@ -266,6 +265,28 @@ class P2PIntegration(unittest.TestCase):
         self.assertEqual(conf.read_text(), content)
         self.assertFalse(self.conf.exists())
 
+    def test_actual_install_with_only_rtx_does_not_touch_host(self):
+        for path in self.sysfs.glob("*/device"):
+            path.write_text("0x2684\n")
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("SKIP: no supported CMP", result.stdout)
+        self.assertFalse(self.conf.exists())
+        self.assertFalse(any(e["cmd"] in ("patch", "make", "depmod", "modprobe", "update-initramfs")
+                             for e in self.events()))
+
+    def test_old_managed_global_options_are_backed_up_before_initramfs(self):
+        self.conf.parent.mkdir(parents=True)
+        old = 'options nvidia NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"\n'
+        self.conf.write_text(old)
+        events = self.successful_build()
+        self.assertFalse(self.conf.exists())
+        saved = list(self.moddir.glob("legacy-global-options.*.conf.bak"))
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0].read_text(), old)
+        init = next(e for e in events if e["cmd"] == "update-initramfs")
+        self.assertIsNone(init["config"])
+
     def test_low_level_busy_or_unknown_clients_fail_closed(self):
         for status in ("0", "2"):
             result = self.run_script(CMPUNLOCKER_ENABLE_P2P="1", MOCK_FUSER_STATUS=status)
@@ -284,7 +305,7 @@ class P2PIntegration(unittest.TestCase):
         self.assertEqual((self.moddir / "card_profile").read_text(), "mixed\n")
         self.assertIn("20c2 8gb 65536", (self.moddir / "gpu_inventory").read_text())
         self.assertIn("2082 10gb 40960", (self.moddir / "gpu_inventory").read_text())
-        self.assertIn("RMForceStaticBar1=1", self.conf.read_text())
+        self.assertFalse(self.conf.exists())
         self.assertIn("--p2p", self.run_script("install.sh", ["--help"]).stdout)
 
     def test_initramfs_failure_reports_incomplete_p2p_install(self):
@@ -292,7 +313,7 @@ class P2PIntegration(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("initramfs was not rebuilt", result.stderr)
         self.assertNotIn("initramfs rebuilt", result.stdout)
-        self.assertTrue(self.conf.exists())
+        self.assertFalse(self.conf.exists())
         self.assertEqual((self.moddir / "p2p_enabled").read_text(), "1\n")
         self.assertFalse(any(e["cmd"] == "modprobe" for e in self.events(clear=True)))
         self.successful_build("1")

@@ -121,6 +121,16 @@ class P2PModeTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.calls.exists())
 
+    def test_rtx_only_auto_install_is_a_noop_but_explicit_count_fails(self):
+        self.cards(["0x2684"])
+        result = self.run_install("auto")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("SKIP: no supported CMP", result.stdout)
+        self.assertFalse(self.calls.exists())
+        result = self.run_install("1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.calls.exists())
+
     def test_base_driver_and_gen2_are_not_overwritten_by_feature(self):
         build = (ROOT / "vendor/cmpunlocker/driver/build.sh").read_text()
         self.assertIn("cmp-probe-serialized.patch", build)

@@ -12,7 +12,7 @@ class HBMIntegration(unittest.TestCase):
 
     def test_baseline_has_no_hbm_patch_and_records_disabled(self):
         events = self.host.successful_build()
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 15)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 16)
         self.assertEqual((self.host.moddir / "hbm_control_enabled").read_text(), "0\n")
 
     def test_hbm_enable_disable_rebuilds_without_live_reload(self):
@@ -21,16 +21,16 @@ class HBMIntegration(unittest.TestCase):
         baseline = stamp.read_text()
         events = self.host.successful_build(CMPUNLOCKER_ENABLE_HBM="1")
         patches = [e for e in events if e["cmd"] == "patch"]
-        self.assertEqual(len(patches), 16)
+        self.assertEqual(len(patches), 17)
         patch = self.host.project / "driver/patches/hbm/hbm-control-plm.patch"
         self.assertEqual(patches[-1]["sha256"], hashlib.sha256(patch.read_bytes()).hexdigest())
         self.assertIn("--fuzz=0", patches[-1]["args"])
         self.assertNotEqual(stamp.read_text(), baseline)
         self.assertEqual((self.host.moddir / "hbm_control_enabled").read_text(), "1\n")
-        self.assertNotIn("StaticBar1", self.host.conf.read_text())
+        self.assertFalse(self.host.conf.exists())
         self.assertFalse(any(e["cmd"] == "modprobe" for e in events))
         events = self.host.successful_build(CMPUNLOCKER_ENABLE_HBM="0")
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 15)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 16)
         self.assertEqual(stamp.read_text(), baseline)
         self.assertEqual((self.host.moddir / "hbm_control_enabled").read_text(), "0\n")
         self.assertFalse(any(e["cmd"] == "modprobe" for e in events))
@@ -39,7 +39,7 @@ class HBMIntegration(unittest.TestCase):
         stage = self.host.tmp / "inactive-experimental"
         events = self.host.successful_build("1", CMPUNLOCKER_ENABLE_HBM="1",
                                             CMPUNLOCKER_STAGE_DIR=str(stage))
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 20)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 22)
         self.assertEqual((stage / "hbm_control_enabled").read_text(), "1\n")
         self.assertEqual((stage / "p2p_enabled").read_text(), "1\n")
         self.assertFalse(any(e["cmd"] in ("depmod", "modprobe", "update-initramfs") for e in events))
@@ -67,7 +67,7 @@ class HBMIntegration(unittest.TestCase):
         patch = self.host.project / "driver/patches/hbm/hbm-control-plm.patch"
         patch.write_text("Fixture revision\n" + patch.read_text())
         events = self.host.successful_build(CMPUNLOCKER_ENABLE_HBM="1")
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 16)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 17)
 
     def test_failed_hbm_patch_does_not_install_or_stamp(self):
         result = self.host.run_script(CMPUNLOCKER_ENABLE_HBM="1", FAIL_PATCH="FBPA_PLL0")

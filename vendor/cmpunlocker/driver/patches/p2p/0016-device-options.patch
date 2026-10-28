@@ -1,0 +1,11 @@
+Optional P2P settings use the same current-device CMP gate as Gen2 defaults.
+Do not leave global P2P module options behind after a card is replaced.
+
+--- a/kernel-open/nvidia/nv-pci.c
++++ b/kernel-open/nvidia/nv-pci.c
+@@ -2200,3 +2200,5 @@
+         rm_write_registry_dword(sp, nv, "RMPcieLinkSpeed", 1);
+         /* CMP170_OPTIONAL_P2P_DEFAULTS */
++        rm_write_registry_dword(sp, nv, "RMForceStaticBar1", 1);
++        rm_write_registry_dword(sp, nv, "RMPcieP2PType", 1);
+     }

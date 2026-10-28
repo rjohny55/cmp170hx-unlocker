@@ -1,6 +1,6 @@
 --- a/kernel-open/nvidia/nv-pci.c
 +++ b/kernel-open/nvidia/nv-pci.c
-@@ -337,6 +337,52 @@
+@@ -337,6 +337,51 @@
  #endif
  }
  
@@ -44,7 +44,6 @@
 +
 +    iounmap(pcfg);
 +
-+    NVreg_EnableResizableBar = 1;
 +    nv_printf(NV_DBG_ERRORS,
 +        "NVRM: CMP BAR1: resize enabled, will attempt up to 64 GB\n");
 +#endif
@@ -53,6 +52,13 @@
  static int nv_resize_pcie_bars(struct pci_dev *pci_dev) {
  #if defined(NV_PCI_REBAR_GET_POSSIBLE_SIZES_PRESENT)
      u16 cmd;
+@@ -346,3 +391,5 @@
+-    if (NVreg_EnableResizableBar == 0)
++    if (NVreg_EnableResizableBar == 0 &&
++        !(pci_dev->vendor == PCI_VENDOR_ID_NVIDIA &&
++          (pci_dev->device == 0x20C2 || pci_dev->device == 0x2082)))
+     {
+         nv_printf(NV_DBG_INFO, "NVRM: resizable BAR disabled by regkey, skipping\n");
 @@ -2087,12 +2133,21 @@
          !nv_pci_validate_bars(pci_dev, /* only_bar0 = */ NV_FALSE))
          goto err_zero_dev;

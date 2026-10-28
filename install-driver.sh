@@ -31,6 +31,10 @@ for option in "$@"; do
 done
 [[ $EUID -eq 0 ]] || { echo 'Run as root, during a GPU maintenance window' >&2; exit 1; }
 actual=$(cmp170_gpu_count)
+if [[ $requested_count == auto && $actual == 0 ]]; then
+    echo 'SKIP: no supported CMP 170HX; NVIDIA driver and system configuration unchanged'
+    exit 0
+fi
 [[ $expected != auto ]] || expected=$actual
 cmp170_check_expected "$expected" "$actual"
 if [[ $enable_p2p == 1 ]]; then

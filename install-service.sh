@@ -11,6 +11,10 @@ source "$repo_dir/scripts/inventory.sh"
 actual_count=$(cmp170_gpu_count)
 requested_count=${1:-auto}
 expected_count=$requested_count
+if [[ $requested_count == auto && $actual_count == 0 ]]; then
+    echo 'SKIP: no supported CMP 170HX; service and configuration unchanged'
+    exit 0
+fi
 [[ $expected_count != auto ]] || expected_count=$actual_count
 # Fail before touching an existing service/configuration when the count is stale.
 cmp170_check_expected "$expected_count" "$actual_count"

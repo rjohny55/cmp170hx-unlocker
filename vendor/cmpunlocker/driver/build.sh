@@ -13,9 +13,18 @@ SRC_NAME="open-gpu-kernel-modules-${VERSION}"
 SRC_DIR="${BUILD_ROOT}/${SRC_NAME}"
 TARBALL="${BUILD_ROOT}/${SRC_NAME}.tar.gz"
 TARBALL_URL="https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${VERSION}.tar.gz"
-KVER="$(uname -r)"
+RUNNING_KVER="$(uname -r)"
+KVER="${CMPUNLOCKER_KERNEL_VERSION:-${RUNNING_KVER}}"
+[[ -z "${CMPUNLOCKER_KERNEL_VERSION:-}" || "${KVER}" =~ ^[0-9]+\.[0-9]+\.[0-9]+[-._+a-zA-Z0-9]*$ ]] || {
+    echo 'CMPUNLOCKER_KERNEL_VERSION must be a valid kernel release, not a path' >&2
+    exit 1
+}
 KSRC="/lib/modules/${KVER}/build"
 STAGE_DIR="${CMPUNLOCKER_STAGE_DIR:-}"
+if [[ "${KVER}" != "${RUNNING_KVER}" && -z "${STAGE_DIR}" ]]; then
+    echo 'Building for an inactive kernel requires CMPUNLOCKER_STAGE_DIR; live installation/reload is refused' >&2
+    exit 1
+fi
 INSTALL_MOD_DIR="/lib/modules/${KVER}/updates/cmpunlocker"
 PREVIOUS_P2P="$(cat "${INSTALL_MOD_DIR}/p2p_enabled" 2>/dev/null || true)"
 PREVIOUS_HBM="$(cat "${INSTALL_MOD_DIR}/hbm_control_enabled" 2>/dev/null || true)"
@@ -49,6 +58,21 @@ case "${ENABLE_HBM}" in
     *) die 'CMPUNLOCKER_ENABLE_HBM must be 0 or 1' ;;
 esac
 source "${SCRIPT_DIR}/../common/p2p.sh"
+
+# Staging is inactive and may run without a GPU; an actual install must not
+# change an RTX-only machine, even through this lower-level entrypoint.
+if [[ -z "${STAGE_DIR}" ]]; then
+    cmp_supported=0
+    for path in /sys/bus/pci/devices/*; do
+        [[ -r $path/vendor && -r $path/device ]] || continue
+        [[ $(<"$path/vendor") == 0x10de ]] || continue
+        case $(<"$path/device") in 0x20c2|0x2082) cmp_supported=1; break ;; esac
+    done
+    if [[ $cmp_supported == 0 ]]; then
+        info 'SKIP: no supported CMP 170HX; modules and host configuration unchanged'
+        exit 0
+    fi
+fi
 
 version_supported() {
     local v="$1"
@@ -89,6 +113,7 @@ PATCH_ORDER=(
     pcie-gen2-probe-retrain.patch
     name-string.patch
     bar1-resize-unlock.patch
+    cmp-device-options.patch
     cmp-sku-mask.patch
     ecc-enable.patch
     ecc-fbpa-static.patch
@@ -104,6 +129,7 @@ P2P_PATCH_ORDER=(
     p2p/0011-p2p-bar1.patch
     p2p/0013-skip-mailbox-peer-preinit.patch
     p2p/0015-bar1p2p-readcap-override.patch
+    p2p/0016-device-options.patch
 )
 if [[ "${ENABLE_P2P}" -eq 1 ]]; then
     PATCH_ORDER+=("${P2P_PATCH_ORDER[@]}")
@@ -284,13 +310,19 @@ if [[ -n "${STAGE_DIR}" ]]; then
     exit 0
 fi
 
-REGISTRY_DWORDS="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"
-if [[ "${ENABLE_P2P}" -eq 1 ]]; then
-    REGISTRY_DWORDS+=";RMForceStaticBar1=1;RMPcieP2PType=1"
+# Defaults now live behind the current-device PCI-ID gate in the driver.
+# Preserve old managed options as a backup, never apply them to other GPUs.
+legacy_options=/etc/modprobe.d/cmp-pcie-gen2.conf
+if [[ -e ${legacy_options} ]]; then
+    if ! grep -Fxq 'options nvidia NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1"' "${legacy_options}" &&
+       ! grep -Fxq 'options nvidia NVreg_RegistryDwords="RmForceEnableGen2=1;RMPcieLinkSpeed=0x1;RMForceStaticBar1=1;RMPcieP2PType=1"' "${legacy_options}"; then
+        die 'Unknown cmp-pcie-gen2.conf content; preserve it and resolve global options before installation'
+    fi
+    [[ $(wc -l < "${legacy_options}") -eq 1 ]] || die 'Extra user content in cmp-pcie-gen2.conf; refusing to overwrite'
+    backup_options="${INSTALL_MOD_DIR}/legacy-global-options.$(date -u +%Y%m%dT%H%M%SZ).$$.conf.bak"
+    mv "${legacy_options}" "${backup_options}"
+    ok "Old global CMP options moved to ${backup_options}"
 fi
-mkdir -p /etc/modprobe.d
-printf 'options nvidia NVreg_RegistryDwords="%s"\n' "${REGISTRY_DWORDS}" \
-    > /etc/modprobe.d/cmp-pcie-gen2.conf
 printf '%s\n' "${ENABLE_P2P}" > "${INSTALL_MOD_DIR}/p2p_enabled"
 printf '%s\n' "${ENABLE_HBM}" > "${INSTALL_MOD_DIR}/hbm_control_enabled"
 

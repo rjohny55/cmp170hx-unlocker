@@ -9,6 +9,22 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class FastActivationTests(unittest.TestCase):
+    def test_inactive_kernel_requires_staging_before_any_build(self):
+        build = ROOT / "vendor/cmpunlocker/driver/build.sh"
+        for release, message in [
+            ("7.0.0-38-inactive-fixture", "inactive kernel requires"),
+            ("../../boot", "valid kernel release"),
+            ("7.0.0-38\nother", "valid kernel release"),
+        ]:
+            with self.subTest(release=release):
+                env = dict(os.environ, CMPUNLOCKER_KERNEL_VERSION=release)
+                env.pop("CMPUNLOCKER_STAGE_DIR", None)
+                result = subprocess.run(["bash", str(build)], env=env,
+                                        capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+                self.assertNotIn("Building modules", result.stdout)
+
     def test_inventory_counts_only_supported_cards(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -238,13 +254,12 @@ esac''',
             base = Path(tmp)
             source = base / "kernel-open/nvidia/nv-pci.c"
             source.parent.mkdir(parents=True)
-            source.write_text('''    .driver.pm = &nv_pm_ops,
-#endif
-#if NV_PCI_ASYNC_PROBE_SUPPORTED
-    .driver.probe_type = PROBE_PREFER_ASYNCHRONOUS,
-#else
-    .driver.probe_type = PROBE_FORCE_SYNCHRONOUS,
-#endif
+            source.write_text('''    if (NVreg_RegisterPCIDriver == 0)
+    {
+        return 0;
+    }
+
+    smp_store_release(&nv_pci_driver_registration_in_progress, NV_TRUE);
 ''')
             patch = ROOT / "vendor/cmpunlocker/driver/patches/cmp-probe-serialized.patch"
             with patch.open() as stream:
@@ -252,8 +267,12 @@ esac''',
                                         stdin=stream, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             patched = source.read_text()
-            self.assertNotIn("PROBE_PREFER_ASYNCHRONOUS", patched)
-            self.assertEqual(patched.count("PROBE_FORCE_SYNCHRONOUS"), 2)
+            self.assertIn("PROBE_PREFER_ASYNCHRONOUS", patched)
+            self.assertEqual(patched.count("PROBE_FORCE_SYNCHRONOUS"), 1)
+            self.assertLess(patched.index('if (cmp != NULL)'), patched.index('PROBE_FORCE_SYNCHRONOUS'))
+            self.assertIn('pci_get_device(PCI_VENDOR_ID_NVIDIA, 0x20C2, NULL)', patched)
+            self.assertIn('pci_get_device(PCI_VENDOR_ID_NVIDIA, 0x2082, NULL)', patched)
+            self.assertIn('pci_dev_put(cmp)', patched)
 
     def test_bash_syntax(self):
         for script in ROOT.rglob("*.sh"):
