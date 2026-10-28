@@ -41,7 +41,7 @@ class FastActivationTests(unittest.TestCase):
         original = (ROOT / "scripts/gen2-second-pass.sh").read_text()
         for count, args, ok in [(1, [], True), (2, ["auto"], True),
                                 (4, [], True), (8, ["auto"], True),
-                                (0, [], False), (4, ["1"], False),
+                                (0, [], True), (0, ["1"], False), (4, ["1"], False),
                                 (4, ["4"], True)]:
             with self.subTest(count=count, args=args), tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)
@@ -83,7 +83,10 @@ class FastActivationTests(unittest.TestCase):
                     "activation-test", str(commands), str(script), *args,
                 ], capture_output=True, text=True)
                 self.assertEqual(result.returncode == 0, ok, result.stdout + result.stderr)
-                if ok:
+                if ok and count == 0:
+                    self.assertIn("SKIP: no supported CMP 170HX", result.stdout)
+                    self.assertNotIn("MOCK_DRIVER_CALLED", result.stdout)
+                elif ok:
                     self.assertIn(f"PASS: {count} detected CMP 170HX cards", result.stdout)
                 else:
                     self.assertNotIn("MOCK_DRIVER_CALLED", result.stdout)
@@ -109,8 +112,8 @@ class FastActivationTests(unittest.TestCase):
     def test_gen2_retrain_preserves_x4_x8_x16_on_both_driver_paths(self):
         original = (ROOT / "scripts/gen2-second-pass.sh").read_text()
         for width in [4, 8, 16]:
-            for require_flr in [False, True]:
-                with self.subTest(width=width, flr=require_flr), tempfile.TemporaryDirectory() as tmp:
+            for require_flr, mixed in [(False, False), (True, False), (False, True), (True, True)]:
+                with self.subTest(width=width, flr=require_flr, mixed=mixed), tempfile.TemporaryDirectory() as tmp:
                     base = Path(tmp)
                     sysfs = base / "sysfs"
                     sysfs.mkdir()
@@ -125,6 +128,12 @@ class FastActivationTests(unittest.TestCase):
                     (gpu / "driver" / "unbind").touch()
                     for device in [port, gpu]:
                         (sysfs / device.name).symlink_to(device, target_is_directory=True)
+                    if mixed:
+                        other = sysfs / "0000:02:00.0"
+                        other.mkdir()
+                        (other / "vendor").write_text("0x10de\n")
+                        (other / "device").write_text("0x2684\n")
+                        (other / "class").write_text("0x030000\n")
                     (base / "modules").touch()
                     (base / "loads").write_text("0\n")
                     commands = base / "bin"
@@ -178,6 +187,13 @@ esac''',
                              "FIXTURE_DIR": str(base), "FIXTURE_WIDTH": str(width),
                              "FIXTURE_REQUIRE_FLR": "1" if require_flr else "0"},
                         capture_output=True, text=True, timeout=15)
+                    if mixed and require_flr:
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn("refusing on mixed-GPU host", result.stdout + result.stderr)
+                        self.assertEqual((base / "loads").read_text().strip(), "1")
+                        self.assertEqual((gpu / "reset").read_text(), "")
+                        self.assertEqual((gpu / "driver" / "unbind").read_text(), "")
+                        continue
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     self.assertIn("PASS: 1 detected CMP 170HX cards", result.stdout)
                     self.assertEqual("starting FLR and second driver pass" in result.stdout, require_flr)

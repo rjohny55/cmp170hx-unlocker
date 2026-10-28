@@ -30,13 +30,20 @@ exec 9>/run/cmp170-gen2-second-pass.lock
 flock -n 9 || die 'another Gen2 activation or service installation is in progress'
 
 declare -a gpus=()
+declare -a other_nvidia_graphics=()
 declare -A ports=()
 for path in /sys/bus/pci/devices/*; do
     [[ -f ${path}/vendor && -f ${path}/device ]] || continue
     [[ $(<"${path}/vendor") == 0x10de ]] || continue
     case $(<"${path}/device") in
         0x20c2|0x2082) ;;
-        *) continue ;;
+        *)
+            # Audio/USB functions are not additional GPUs. Never unload the
+            # shared driver underneath a non-CMP graphics/compute device.
+            if [[ -r ${path}/class && $(<"${path}/class") == 0x03* ]]; then
+                other_nvidia_graphics+=("${path##*/}")
+            fi
+            continue ;;
     esac
     gpu=${path##*/}
     port=$(basename "$(dirname "$(readlink -f "$path")")")
@@ -48,7 +55,10 @@ for path in /sys/bus/pci/devices/*; do
 done
 if [[ $expected_count == auto ]]; then
     expected_count=${#gpus[@]}
-    [[ $expected_count -gt 0 ]] || die 'no supported CMP 170HX cards detected; nothing to activate'
+    if [[ $expected_count -eq 0 ]]; then
+        log 'SKIP: no supported CMP 170HX; other GPUs use the normal NVIDIA driver path'
+        exit 0
+    fi
     log "automatic inventory: $expected_count CMP 170HX card(s) detected"
 fi
 [[ ${#gpus[@]} -eq ${expected_count} ]] || die "detected ${#gpus[@]} CMP 170HX, expected $expected_count; check PCIe enumeration first, or run install-service.sh auto after verifying the new card inventory"
@@ -116,6 +126,9 @@ done
 if [[ $first_pass_ok -eq 1 ]]; then
     log 'all detected cards reached Gen2 on first pass'
 else
+    if [[ ${#other_nvidia_graphics[@]} -gt 0 ]]; then
+        die "CMP Gen2 second pass requires unloading the shared NVIDIA driver; refusing on mixed-GPU host (${other_nvidia_graphics[*]}). CMP unlock is retained; no FLR or global module reload was performed"
+    fi
     log 'starting FLR and second driver pass'
     second_pass_started=1
     for gpu in "${gpus[@]}"; do
