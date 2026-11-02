@@ -43,3 +43,5 @@ class BAR1HostExampleTests(unittest.TestCase):
         script = (ROOT / 'tools/activate-bar1-host194.sh').read_text()
         self.assertIn('udevadm control --reload', script)
         self.assertIn('udevadm settle --timeout=12', script)
+        self.assertIn('udevadm control --stop-exec-queue', script)
+        self.assertGreaterEqual(script.count('udevadm control --start-exec-queue'), 2)

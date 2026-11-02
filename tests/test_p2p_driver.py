@@ -192,7 +192,7 @@ class P2PIntegration(unittest.TestCase):
 
     def test_default_and_empty_disable_all_p2p_patches(self):
         events = self.successful_build()
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 16)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 17)
         self.assertEqual((self.moddir / "p2p_enabled").read_text(), "0\n")
         self.assertFalse(self.conf.exists())
         self.assertFalse(any(e["cmd"] == "patch" for e in self.successful_build("")))
@@ -203,7 +203,7 @@ class P2PIntegration(unittest.TestCase):
         disabled_stamp = stamp.read_text()
         events = self.successful_build("1")
         patches = [e for e in events if e["cmd"] == "patch"]
-        self.assertEqual(len(patches), 22)
+        self.assertEqual(len(patches), 23)
         for event, name in zip(patches[-len(P2P_NAMES):], P2P_NAMES):
             data = (self.project / "driver/patches/p2p" / name).read_bytes()
             self.assertEqual(event["sha256"], hashlib.sha256(data).hexdigest())
@@ -215,7 +215,7 @@ class P2PIntegration(unittest.TestCase):
         self.assertFalse(any(e["cmd"] == "modprobe" for e in events))
         self.assertFalse(any(e["cmd"] == "patch" for e in self.successful_build("1")))
         events = self.successful_build("0")
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 16)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 17)
         self.assertEqual(stamp.read_text(), disabled_stamp)
         self.assertFalse(self.conf.exists())
         self.assertFalse(any(e["cmd"] == "modprobe" for e in events))
@@ -225,7 +225,7 @@ class P2PIntegration(unittest.TestCase):
         patch = self.project / "driver/patches/p2p/0011-p2p-bar1.patch"
         patch.write_text("Fixture revision\n" + patch.read_text())
         events = self.successful_build("1")
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 22)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 23)
 
     def test_failed_patch_never_installs_or_stamps_partial_build(self):
         result = self.run_script(CMPUNLOCKER_ENABLE_P2P="1",
@@ -236,7 +236,7 @@ class P2PIntegration(unittest.TestCase):
         self.assertFalse((self.moddir / "p2p_enabled").exists())
         self.assertFalse(any(e["cmd"] == "make" for e in self.events(clear=True)))
         events = self.successful_build("1")
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 22)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 23)
 
     def test_staging_can_build_p2p_without_gpus_and_never_activates(self):
         for gpu in self.sysfs.iterdir():

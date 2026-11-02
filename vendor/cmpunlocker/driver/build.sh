@@ -123,7 +123,7 @@ PATCH_ORDER=(
 # 615 introduced asynchronous PCI probes. CMP unlock initialization touches
 # shared RM state; keep probes serial until this path is concurrency-safe.
 if [[ "${VERSION}" == 615.71.09 ]]; then
-    PATCH_ORDER+=(cmp-probe-serialized.patch)
+    PATCH_ORDER+=(cmp-probe-serialized.patch cxl-header-capability-615.patch)
 fi
 P2P_PATCH_ORDER=(
     p2p/0007-p2p-caps.patch

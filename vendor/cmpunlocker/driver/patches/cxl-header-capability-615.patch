@@ -1,0 +1,63 @@
+From 0e23c574b430c27d7b5ae394bc6ca488aff346cd Mon Sep 17 00:00:00 2001
+From: ubsefor <letzdropthebas@gmail.com>
+Date: Fri, 9 Oct 2026 16:00:05 +0300
+Subject: [PATCH] codegen: fix nv_cxl struct generation with proper conftest
+ exported defines per #1433 suggestion
+
+Imported from https://github.com/Ubsefor/open-gpu-kernel-modules/commit/0e23c574b430c27d7b5ae394bc6ca488aff346cd
+Fixes NVIDIA 615 build against Ubuntu HWE 7.0.0-42 public CXL headers.
+The header exists without the internal CXL device API; use its conftest result.
+
+---
+ kernel-open/common/inc/nv-linux.h | 6 +++---
+ kernel-open/common/inc/nv-pci.h   | 4 ++--
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/kernel-open/common/inc/nv-linux.h b/kernel-open/common/inc/nv-linux.h
+index f377db1e9..71a5de13e 100644
+--- a/kernel-open/common/inc/nv-linux.h
++++ b/kernel-open/common/inc/nv-linux.h
+@@ -38,7 +38,7 @@
+ #include "nv-chardev-numbers.h"
+ #include "nv-platform.h"
+
+-#if defined(NV_CXL_CXL_H_PRESENT)
++#if defined(NV_CXL_CXL_H_PRESENT) && defined(NV_CXL_INIT_SUPPORTED)
+ #include <cxl/cxl.h>
+ #endif
+
+@@ -1265,7 +1265,7 @@ struct nv_pci_tegra_devfreq_dev;
+ /* this is a general os-specific state structure. the first element *must* be
+    the general state structure, for the generic unix-based code */
+
+-#if defined(NV_CXL_CXL_H_PRESENT)
++#if defined(NV_CXL_CXL_H_PRESENT) && defined(NV_CXL_INIT_SUPPORTED)
+ struct nv_cxl {
+     struct cxl_dev_state         cxlds;
+     struct cxl_memdev           *cxlmd;
+@@ -1287,7 +1287,7 @@ typedef struct nv_linux_state_s {
+     /* coherent link information */
+      coherent_link_info_t coherent_link_info;
+
+-#if defined(NV_CXL_CXL_H_PRESENT)
++#if defined(NV_CXL_CXL_H_PRESENT) && defined(NV_CXL_INIT_SUPPORTED)
+     /* CXL device state; NULL for non-CXL GPUs */
+     struct nv_cxl *cxl;
+ #endif
+diff --git a/kernel-open/common/inc/nv-pci.h b/kernel-open/common/inc/nv-pci.h
+index ca120ff24..035bcdaa5 100644
+--- a/kernel-open/common/inc/nv-pci.h
++++ b/kernel-open/common/inc/nv-pci.h
+@@ -28,11 +28,11 @@
+ #include "nv-linux.h"
+ #include <uapi/linux/pci_regs.h>
+
+-#if defined(NV_CXL_CXL_H_PRESENT)
++#if defined(NV_CXL_CXL_H_PRESENT) && defined(NV_CXL_INIT_SUPPORTED)
+ #include <cxl/cxl.h>
+ #endif
+
+-#if defined(NV_CXL_PCI_H_PRESENT)
++#if defined(NV_CXL_PCI_H_PRESENT) && defined(NV_CXL_INIT_SUPPORTED)
+ #include <cxl/pci.h>
+ #endif

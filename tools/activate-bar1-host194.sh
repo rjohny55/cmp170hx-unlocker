@@ -2,9 +2,18 @@
 # Validated G292-Z20 GPU-only switch topology. Never scan a root bus or a NIC.
 # Boot keeps the baseline driver; this optional, bounded pass runs after SSH.
 set -Eeuo pipefail
-[[ $EUID == 0 && $(hostname) == gigabyte && $(uname -r) == 6.8.0-147-generic ]]
-task=/var/lib/cmp170-unlock/p2p-host-static-194-20261102
-modules=$task/staged
+[[ $EUID == 0 && $(hostname) == gigabyte ]]
+kernel=$(uname -r)
+case $kernel in
+    6.8.0-147-generic)
+        task=/var/lib/cmp170-unlock/p2p-host-static-194-20261102
+        modules=$task/staged
+        module_hashes=$task/staged.sha256 ;;
+    7.0.0-42-generic)
+        echo 'HWE7 BAR1 bridge allocation is not qualified on this topology' >&2
+        exit 1 ;;
+    *) echo 'Kernel has no validated staged module set'; exit 1 ;;
+esac
 branches=('0000:00:03.1 01 03 04' '0000:40:01.1 41 43 44'
           '0000:80:03.1 86 88 89' '0000:c0:01.1 c1 c3 c4')
 exec 8>/run/cmp170-bar1-maintenance.lock
@@ -16,10 +25,10 @@ for p in /sys/bus/pci/devices/*; do
     [[ $(cat "$p/vendor") == 0x10de && $(cat "$p/class") == 0x03* ]] || continue
     [[ $(cat "$p/device") == 0x20c2 ]] || { echo 'Mixed NVIDIA GPU host; refusing'; exit 1; }
 done
-sha256sum -c "$task/staged.sha256"
+sha256sum -c "$module_hashes"
 for name in nvidia nvidia-uvm; do
     [[ $(modinfo -F version "$modules/$name.ko") == 615.71.09 ]]
-    [[ $(modinfo -F vermagic "$modules/$name.ko") == '6.8.0-147-generic '* ]]
+    [[ $(modinfo -F vermagic "$modules/$name.ko") == "$kernel "* ]]
 done
 for branch in "${branches[@]}"; do
     read -r root bus first second <<< "$branch"
@@ -44,10 +53,13 @@ for branch in "${branches[@]}"; do
 done
 apps=$(timeout -k 2s 30s nvidia-smi --query-compute-apps=pid --format=csv,noheader)
 [[ -z $apps ]] || { echo 'Active CUDA clients; leaving driver unchanged'; exit 1; }
-panel=0; persist=0; touched=0; ready=0; autoload_block_owned=0
+panel=0; persist=0; touched=0; ready=0; autoload_block_owned=0; udev_queue_paused=0
 power_controls=$(mktemp /run/cmp170-bar1-power.XXXXXX)
 finish() {
     rc=$?; trap - EXIT
+    if ((udev_queue_paused)); then
+        udevadm control --start-exec-queue || true
+    fi
     if ((autoload_block_owned)); then
         rm /run/modprobe.d/cmp170-bar1-maintenance.conf
         udevadm control --reload || true
@@ -84,6 +96,11 @@ install -m 0644 /usr/local/share/cmp170-bar1-maintenance.conf /run/modprobe.d/cm
 autoload_block_owned=1
 udevadm control --reload
 timeout -k 2s 15s udevadm settle --timeout=12
+# A boot-time udev worker may retain an older libkmod context. Pause dispatch
+# while the audited GPU switches are re-enumerated and the staged driver loads.
+# Existing network/storage devices stay bound and operational throughout.
+udevadm control --stop-exec-queue
+udev_queue_paused=1
 for branch in "${branches[@]}"; do
     read -r root bus first second <<< "$branch"
     actual=$(readlink -f /sys/bus/pci/devices/$root)
@@ -124,10 +141,12 @@ for branch in "${branches[@]}"; do
         echo "0000:$gpu:00.0 BAR1=64GiB"
     done
 done
-timeout -k 2s 15s udevadm settle --timeout=12
 ! grep -q '^nvidia ' /proc/modules
 timeout -k 2s 90s insmod "$modules/nvidia.ko"
 timeout -k 2s 20s insmod "$modules/nvidia-uvm.ko"
+udevadm control --start-exec-queue
+udev_queue_paused=0
+timeout -k 2s 20s udevadm settle --timeout=18
 count=$(timeout -k 2s 30s nvidia-smi --query-gpu=name --format=csv,noheader | grep -cx 'NVIDIA CMP 170HX')
 [[ $count == 8 ]]
 CUDA_DEVICE_ORDER=PCI_BUS_ID timeout -k 5s 90s /home/rjohny/cmp170-forgejo-dff7179-20261102/test-p2p > "$task/last-boot-peer-test.txt" 2>&1

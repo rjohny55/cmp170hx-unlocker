@@ -248,6 +248,7 @@ esac''',
                 )
                 patches = result.stdout.splitlines()
                 self.assertEqual("cmp-probe-serialized.patch" in patches, version == "615.71.09")
+                self.assertEqual("cxl-header-capability-615.patch" in patches, version == "615.71.09")
                 self.assertEqual(len(patches), len(set(patches)))
                 for patch in patches:
                     self.assertTrue((ROOT / "vendor/cmpunlocker/driver/patches" / patch).is_file())
