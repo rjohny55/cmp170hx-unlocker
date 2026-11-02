@@ -10,6 +10,13 @@ Type=oneshot
 Environment=CMP170_EXPECTED_GPUS=auto
 EnvironmentFile=-/etc/cmp170-unlock.conf
 ExecStart=/usr/local/sbin/cmp170-gen2-second-pass ${CMP170_EXPECTED_GPUS}
+# oneshot services otherwise have no start timeout. Bound driver initialization
+# and the whole retrain sequence, not just the PCIe polling loops.
+TimeoutStartSec=120s
+TimeoutStopSec=10s
+KillMode=control-group
+SendSIGKILL=yes
+Restart=no
 RemainAfterExit=no
 
 [Install]
