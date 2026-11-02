@@ -103,6 +103,24 @@ done''',
         self.assertIn("BAR1 does not cover framebuffer", result.stderr)
         self.assertFalse(self.calls.exists())
 
+    def test_cmp_scoped_defaults_do_not_require_unsafe_global_options(self):
+        module = self.base / f"system/lib/modules/{self.kernel}/updates/cmpunlocker"
+        (module / "device_options_scope").write_text("per-device-cmp170\n")
+        (self.base / "system/proc/driver/nvidia/params").write_text('RegistryDwords: ""\n')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("per-device P2P defaults", result.stdout)
+        self.assertIn("data transfer is NOT verified", result.stdout)
+        self.assertNotIn("nvcc", self.calls.read_text())
+
+    def test_unrecognized_scope_still_requires_legacy_active_options(self):
+        module = self.base / f"system/lib/modules/{self.kernel}/updates/cmpunlocker"
+        (module / "device_options_scope").write_text("unknown\n")
+        (self.base / "system/proc/driver/nvidia/params").write_text('RegistryDwords: ""\n')
+        result = self.run_check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not active", result.stderr)
+
     def test_busy_gpus_are_rejected_before_compilation(self):
         result = self.run_check("--test", TEST_BUSY="0")
         self.assertNotEqual(result.returncode, 0)

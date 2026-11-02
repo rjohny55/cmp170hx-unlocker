@@ -22,6 +22,7 @@ P2P_NAMES = (
     "0007-p2p-caps.patch", "0011-p2p-bar1.patch",
     "0013-skip-mailbox-peer-preinit.patch", "0015-bar1p2p-readcap-override.patch",
     "0016-device-options.patch",
+    "0017-late-bif-defaults.patch",
 )
 
 
@@ -140,6 +141,7 @@ class P2PIntegration(unittest.TestCase):
             gpu.mkdir()
             for key, value in {"vendor": "0x10de", "device": device, "class": "0x030200"}.items():
                 (gpu / key).write_text(value + "\n")
+            (gpu / "resource").write_text("0x0 0x0 0x0\n0x10000000000 0x10fffffffff 0x14220c\n")
         self.conf = self.tmp / "system/etc/modprobe.d/cmp-pcie-gen2.conf"
         bindir = self.tmp / "bin"
         bindir.mkdir()
@@ -201,8 +203,8 @@ class P2PIntegration(unittest.TestCase):
         disabled_stamp = stamp.read_text()
         events = self.successful_build("1")
         patches = [e for e in events if e["cmd"] == "patch"]
-        self.assertEqual(len(patches), 21)
-        for event, name in zip(patches[-5:], P2P_NAMES):
+        self.assertEqual(len(patches), 22)
+        for event, name in zip(patches[-len(P2P_NAMES):], P2P_NAMES):
             data = (self.project / "driver/patches/p2p" / name).read_bytes()
             self.assertEqual(event["sha256"], hashlib.sha256(data).hexdigest())
             self.assertIn("--fuzz=0", event["args"])
@@ -223,7 +225,7 @@ class P2PIntegration(unittest.TestCase):
         patch = self.project / "driver/patches/p2p/0011-p2p-bar1.patch"
         patch.write_text("Fixture revision\n" + patch.read_text())
         events = self.successful_build("1")
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 21)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 22)
 
     def test_failed_patch_never_installs_or_stamps_partial_build(self):
         result = self.run_script(CMPUNLOCKER_ENABLE_P2P="1",
@@ -234,7 +236,7 @@ class P2PIntegration(unittest.TestCase):
         self.assertFalse((self.moddir / "p2p_enabled").exists())
         self.assertFalse(any(e["cmd"] == "make" for e in self.events(clear=True)))
         events = self.successful_build("1")
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 21)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 22)
 
     def test_staging_can_build_p2p_without_gpus_and_never_activates(self):
         for gpu in self.sysfs.iterdir():
@@ -253,6 +255,14 @@ class P2PIntegration(unittest.TestCase):
         self.assertIn("mixed NVIDIA", result.stderr)
         self.assertFalse(self.conf.exists())
         self.assertFalse(any(e["cmd"] in ("patch", "make") for e in self.events()))
+
+    def test_small_bar1_refuses_p2p_before_build_or_install(self):
+        (self.sysfs / "0000:01:00.0/resource").write_text(
+            "0x0 0x0 0x0\n0x10000000000 0x10003ffffff 0x14220c\n")
+        result = self.run_script(CMPUNLOCKER_ENABLE_P2P="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("BAR1 is smaller than framebuffer", result.stderr)
+        self.assertFalse(any(e["cmd"] in ("patch", "make", "depmod", "update-initramfs") for e in self.events()))
 
     def test_competing_registry_options_are_not_overwritten(self):
         conf = self.tmp / "system/etc/modprobe.d/other-nvidia.conf"

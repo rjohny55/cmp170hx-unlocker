@@ -1,0 +1,11 @@
+[Unit]
+Description=Run validated CMP170 BAR1 activation after the host is accessible
+
+[Timer]
+OnBootSec=3min
+AccuracySec=5s
+Unit=cmp170-bar1-p2p-host194.service
+RemainAfterElapse=yes
+
+[Install]
+WantedBy=timers.target

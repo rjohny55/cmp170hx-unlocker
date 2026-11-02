@@ -79,7 +79,8 @@ class FastActivationTests(unittest.TestCase):
                 # Already-Gen2 fixture avoids writes; sleep is mocked to make
                 # the final stability wait deterministic and fast.
                 for name, body in {
-                    "fuser": "exit 1",
+                    "fuser": 'test -e "' + str(base / 'persist-stopped') + '" && exit 1; exit 0',
+                    "systemctl": 'case "$1" in is-active) exit 0;; stop) touch "' + str(base / 'persist-stopped') + '";; start) touch "' + str(base / 'persist-restored') + '";; *) exit 1;; esac',
                     "modprobe": "printf 'MOCK_DRIVER_CALLED\\n'",
                     "nvidia-smi": "exit 0",
                     "setpci": "printf '0002\\n'",
@@ -104,6 +105,8 @@ class FastActivationTests(unittest.TestCase):
                     self.assertNotIn("MOCK_DRIVER_CALLED", result.stdout)
                 elif ok:
                     self.assertIn(f"PASS: {count} detected CMP 170HX cards", result.stdout)
+                    self.assertTrue((base / 'persist-stopped').exists())
+                    self.assertTrue((base / 'persist-restored').exists())
                 else:
                     self.assertNotIn("MOCK_DRIVER_CALLED", result.stdout)
 

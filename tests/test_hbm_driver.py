@@ -39,7 +39,7 @@ class HBMIntegration(unittest.TestCase):
         stage = self.host.tmp / "inactive-experimental"
         events = self.host.successful_build("1", CMPUNLOCKER_ENABLE_HBM="1",
                                             CMPUNLOCKER_STAGE_DIR=str(stage))
-        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 22)
+        self.assertEqual(sum(e["cmd"] == "patch" for e in events), 23)
         self.assertEqual((stage / "hbm_control_enabled").read_text(), "1\n")
         self.assertEqual((stage / "p2p_enabled").read_text(), "1\n")
         self.assertFalse(any(e["cmd"] in ("depmod", "modprobe", "update-initramfs") for e in events))

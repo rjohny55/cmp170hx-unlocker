@@ -100,8 +100,15 @@ P2P adds experimental BAR1 peer mapping and a real CUDA read/write checker.
 HBM control only opens the clock/refresh privilege masks from upstream PR #60;
 it does **not** change clock, refresh or timing values, install `170tune`, or
 enable an idle-power service. See [experimental modes and test checklist](docs/EXPERIMENTAL.md)
-for the opt-in, cold-boot, verification and disable procedures. These modes
-have source-context and offline checks, **not hardware qualification**.
+for the opt-in, cold-boot, verification and disable procedures. HBM control
+has source-context and offline checks, **not hardware qualification**.
+
+BAR1 P2P was tested on one eight-CMP170 G292-Z20 configuration: 64 GiB BAR1
+per GPU, Gen2 x16, and **56/56 directed CUDA peer-read/write pairs passed**.
+See the [BAR1 allocation fixes, measured results and boot safeguards](docs/bar1-g292-20261102.md).
+This does not qualify other motherboard topologies. The ordinary installer
+does not run the host-specific bridge-resizing procedure and refuses P2P
+activation with an undersized BAR1 aperture; offline staged builds remain possible.
 
 ## Manual activation
 

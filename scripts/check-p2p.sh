@@ -28,8 +28,12 @@ installed=$(modinfo -F srcversion "$metadata/nvidia.ko")
 running=$(< /sys/module/nvidia/srcversion)
 [[ -n $installed && $installed == "$running" ]] || die 'running module differs from installed P2P module; cold boot first'
 [[ -r /proc/driver/nvidia/params ]] || die 'active NVIDIA parameters unavailable'
-grep -Eq '^[[:space:]]*RegistryDwords:.*RMForceStaticBar1=1([;"[:space:]]|$)' /proc/driver/nvidia/params || die 'static BAR1 option is not active'
-grep -Eq '^[[:space:]]*RegistryDwords:.*RMPcieP2PType=1([;"[:space:]]|$)' /proc/driver/nvidia/params || die 'BAR1 P2P option is not active'
+if [[ -r $metadata/device_options_scope && $(<"$metadata/device_options_scope") == per-device-cmp170 ]]; then
+    echo 'CMP-only per-device P2P defaults: global RegistryDwords may be empty; real peer transfers remain unverified.'
+else
+    grep -Eq '^[[:space:]]*RegistryDwords:.*RMForceStaticBar1=1([;"[:space:]]|$)' /proc/driver/nvidia/params || die 'static BAR1 option is not active'
+    grep -Eq '^[[:space:]]*RegistryDwords:.*RMPcieP2PType=1([;"[:space:]]|$)' /proc/driver/nvidia/params || die 'BAR1 P2P option is not active'
+fi
 mapfile -t cards < <(cmp170_gpu_list)
 [[ ${#cards[@]} -ge 2 ]] || die 'at least two CMP cards must be visible'
 python3 - "${cards[@]}" <<'PY'

@@ -1,0 +1,41 @@
+Initialize CMP BAR1 P2P defaults after PCI IDs are available. The BIF engine
+constructor may see an unpopulated device ID and keep mailbox P2P selected.
+A 512 KiB mailbox then aligns the static FB mapping to 512 MiB and overflows
+an otherwise sufficient 64 GiB aperture. Preserve explicit user overrides.
+
+--- a/src/nvidia/src/kernel/gpu/bus/arch/maxwell/kern_bus_gm107.c
++++ b/src/nvidia/src/kernel/gpu/bus/arch/maxwell/kern_bus_gm107.c
+@@ -942,6 +942,25 @@
+     vaRangeMax = pKernelBus->bar1[gfid].apertureLength - 1;
+
++    // The BIF constructor can run before PCI IDs have been populated. Apply
++    // CMP-only P2P defaults once IDs are available, before mailbox allocation.
++    {
++        NvU32 cmpDevId = pGpu->idInfo.PCIDeviceID >> 16;
++        if (cmpDevId == 0x20C2 || cmpDevId == 0x2082)
++        {
++            NvU32 override;
++            KernelBif *pKernelBif = GPU_GET_KERNEL_BIF(pGpu);
++            if (osReadRegistryDword(pGpu, NV_REG_STR_RM_PCIEP2P_TYPE, &override) != NV_OK)
++                pKernelBif->pcieP2PType = NV_REG_STR_RM_PCIEP2P_TYPE_BAR1;
++            if (osReadRegistryDword(pGpu, NV_REG_STR_CL_FORCE_P2P, &override) != NV_OK)
++            {
++                pKernelBif->p2pOverride = 0x11;
++                pKernelBif->setProperty(pKernelBif, PDB_PROP_KBIF_P2P_READS_DISABLED, NV_FALSE);
++                pKernelBif->setProperty(pKernelBif, PDB_PROP_KBIF_P2P_WRITES_DISABLED, NV_FALSE);
++            }
++        }
++    }
++
+     //
+     // In sleep-resume, BAR1 is not destroyed - but we would have to rebind the BAR1.
+     // Since that's done already. Exit early from here.
+     //
+@@ -1224,3 +1243,7 @@
+         NvU64 bar1Offset = NV_ALIGN_UP(consoleSize + pKernelBus->p2pPcie.writeMailboxTotalSize, RM_PAGE_SIZE_512M);
++        NV_PRINTF(LEVEL_ERROR,
++                  "CMP BAR1 layout: console=0x%llx mailbox=0x%llx offset=0x%llx pcieType=%u\n",
++                  consoleSize, pKernelBus->p2pPcie.writeMailboxTotalSize,
++                  bar1Offset, GPU_GET_KERNEL_BIF(pGpu)->pcieP2PType);
+         // Enable the static BAR1 mapping for the BAR1 P2P
+         NV_ASSERT_OK_OR_GOTO(rmStatus,

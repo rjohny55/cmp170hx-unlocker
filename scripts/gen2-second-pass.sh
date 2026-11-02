@@ -9,6 +9,7 @@ log() { printf '[cmp170-gen2] %s\n' "$*"; }
 die() { log "ERROR: $*" >&2; exit 1; }
 readreg() { setpci -s "$1" "$2"; }
 second_pass_started=0
+persistenced_was_active=0
 
 restore_driver() {
     if [[ ${second_pass_started} -eq 1 ]]; then
@@ -17,13 +18,16 @@ restore_driver() {
         modprobe nvidia_modeset || true
         modprobe nvidia_drm || true
     fi
+    if [[ ${persistenced_was_active} -eq 1 ]]; then
+        systemctl start --no-block nvidia-persistenced.service || true
+    fi
 }
 trap restore_driver EXIT
 
 [[ ${EUID} -eq 0 ]] || die 'run as root'
 [[ $# -le 1 && ( ${1:-auto} == auto || ${1:-auto} =~ ^[1-9][0-9]*$ ) ]] || die 'usage: sudo scripts/gen2-second-pass.sh [EXPECTED_GPU_COUNT|auto]'
 expected_count=${1:-auto}
-for tool in setpci nvidia-smi modprobe fuser flock; do
+for tool in setpci nvidia-smi modprobe fuser flock timeout; do
     command -v "$tool" >/dev/null || die "$tool is required"
 done
 exec 9>/run/cmp170-gen2-second-pass.lock
@@ -65,7 +69,17 @@ fi
 
 # Do not reset a card with active CUDA clients or another device-file user.
 if fuser /dev/nvidia* >/dev/null 2>&1; then
-    die 'NVIDIA device files are in use; stop GPU workloads before retrying'
+    # Deferred boot activation runs after SSH and may encounter the idle
+    # persistence daemon. Stop only that daemon, never CUDA applications.
+    if command -v systemctl >/dev/null &&
+       systemctl is-active --quiet nvidia-persistenced.service; then
+        persistenced_was_active=1
+        timeout -k 2s 10s systemctl stop nvidia-persistenced.service ||
+            die 'persistence daemon did not stop; skipping Gen2 activation'
+    fi
+    if fuser /dev/nvidia* >/dev/null 2>&1; then
+        die 'NVIDIA device files are in use; stop GPU workloads before retrying'
+    fi
 fi
 
 link_gen() {

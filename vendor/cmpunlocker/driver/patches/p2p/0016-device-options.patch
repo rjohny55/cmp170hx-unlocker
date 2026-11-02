@@ -1,11 +1,20 @@
-Optional P2P settings use the same current-device CMP gate as Gen2 defaults.
-Do not leave global P2P module options behind after a card is replaced.
+Default static BAR1 in host KernelBus for CMP devices only. Do not inject
+host-only P2P registry keys into the per-device table sent to GSP firmware.
+The BAR1 connection type is already defaulted in 0011-p2p-bar1.patch.
 
---- a/kernel-open/nvidia/nv-pci.c
-+++ b/kernel-open/nvidia/nv-pci.c
-@@ -2200,3 +2200,5 @@
-         rm_write_registry_dword(sp, nv, "RMPcieLinkSpeed", 1);
-         /* CMP170_OPTIONAL_P2P_DEFAULTS */
-+        rm_write_registry_dword(sp, nv, "RMForceStaticBar1", 1);
-+        rm_write_registry_dword(sp, nv, "RMPcieP2PType", 1);
+--- a/src/nvidia/src/kernel/gpu/bus/kern_bus.c
++++ b/src/nvidia/src/kernel/gpu/bus/kern_bus.c
+@@ -196,7 +196,12 @@
      }
+     else
+     {
+-        pKernelBus->staticBar1ForceType = NV_REG_STR_RM_FORCE_STATIC_BAR1_AUTO;
++        NvU32 cmpDevId = pGpu->idInfo.PCIDeviceID >> 16;
++        /* Host-side default; explicit user registry overrides above still win. */
++        pKernelBus->staticBar1ForceType =
++            (cmpDevId == 0x20C2 || cmpDevId == 0x2082)
++                ? NV_REG_STR_RM_FORCE_STATIC_BAR1_ENABLE
++                : NV_REG_STR_RM_FORCE_STATIC_BAR1_AUTO;
+     }
+
+     //

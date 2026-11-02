@@ -86,6 +86,7 @@ version_supported() {
 [[ "${EUID}" -eq 0 ]] || die "Run as root: sudo ${SCRIPT_DIR}/build.sh"
 if [[ "${ENABLE_P2P}" -eq 1 && -z "${STAGE_DIR}" ]]; then
     cmp_p2p_check_host || die 'P2P host preflight failed'
+    cmp_p2p_check_bar1 || die 'P2P BAR1 preflight failed; baseline driver left unchanged'
 fi
 if [[ -z "${STAGE_DIR}" && ( "${ENABLE_P2P}" -eq 1 || "${PREVIOUS_P2P}" == 1 ) ]]; then
     cmp_p2p_check_modprobe_options || die 'P2P module-option preflight failed'
@@ -130,6 +131,7 @@ P2P_PATCH_ORDER=(
     p2p/0013-skip-mailbox-peer-preinit.patch
     p2p/0015-bar1p2p-readcap-override.patch
     p2p/0016-device-options.patch
+    p2p/0017-late-bif-defaults.patch
 )
 if [[ "${ENABLE_P2P}" -eq 1 ]]; then
     PATCH_ORDER+=("${P2P_PATCH_ORDER[@]}")
@@ -261,6 +263,7 @@ mkdir -p "${INSTALL_MOD_DIR}"
 printf '%s\n' "${VERSION}" > "${INSTALL_MOD_DIR}/driver_version"
 printf '%s\n' "${PROFILE}" > "${INSTALL_MOD_DIR}/card_profile"
 printf '%s\n' "${UNLOCK_LABEL}" > "${INSTALL_MOD_DIR}/unlock_geometry"
+printf '%s\n' 'per-device-cmp170' > "${INSTALL_MOD_DIR}/device_options_scope"
 if [[ -n "${CMPUNLOCKER_GPU_INVENTORY:-}" ]]; then
     printf '%s\n' "${CMPUNLOCKER_GPU_INVENTORY}" > "${INSTALL_MOD_DIR}/gpu_inventory"
     ok "Wrote gpu_inventory ($(echo "${CMPUNLOCKER_GPU_INVENTORY}" | grep -c . || true) GPU(s))"

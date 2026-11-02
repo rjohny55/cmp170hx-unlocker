@@ -1,0 +1,14 @@
+[Unit]
+Description=Validated G292 CMP170 BAR1 and P2P activation (deferred)
+After=multi-user.target ssh.service ssh.socket docker.service
+ConditionPathExists=/usr/local/sbin/cmp170-bar1-p2p-host194
+ConditionPathExists=!/run/cmp170-bar1-p2p-ready
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cmp170-bar1-p2p-host194
+TimeoutStartSec=300s
+TimeoutStopSec=10s
+KillMode=control-group
+SendSIGKILL=yes
+Restart=no

@@ -31,9 +31,8 @@ class DeviceScopeTests(unittest.TestCase):
             with self.subTest(p2p=p2p):
                 code = body
                 if p2p:
-                    _, _, old, new = next(hunks(PATCHES / "p2p/0016-device-options.patch"))
-                    self.assertIn("".join(old), code)
-                    code = code.replace("".join(old), "".join(new))
+                    patch = (PATCHES / "p2p/0016-device-options.patch").read_text()
+                    self.assertNotIn("rm_write_registry_dword", patch)
                 self.compile_run('''#include <assert.h>
 #include <stddef.h>
 #define PCI_VENDOR_ID_NVIDIA 0x10de
@@ -53,7 +52,7 @@ int main(void) {
     for (unsigned i = 0; i < sizeof(ids)/sizeof(ids[0]); ++i) {
         struct state nv = {{0x10de, ids[i]}};
         writes = 0; probe(&nv);
-        assert(writes == (i < 2 ? ''' + ("4" if p2p else "2") + ''' : 0));
+        assert(writes == (i < 2 ? 2 : 0));
     }
     struct state other = {{0x1002, 0x20c2}};
     writes = 0; probe(&other); assert(writes == 0);
