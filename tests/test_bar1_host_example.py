@@ -34,3 +34,12 @@ class BAR1HostExampleTests(unittest.TestCase):
         self.assertNotIn('depmod', script)
         self.assertIn('autoload_block_owned=1', script)
         self.assertIn('56/56 directed pairs passed real peer reads and writes.', script)
+
+    def test_udev_builtin_and_modprobe_are_both_blocked_during_rescan(self):
+        config = (ROOT / 'tools/cmp170-bar1-maintenance.conf').read_text()
+        self.assertIn('install nvidia /bin/false', config)
+        for name in ('nvidia', 'nvidia_drm', 'nvidia_modeset', 'nvidia_uvm', 'nvidia_peermem'):
+            self.assertIn('blacklist ' + name + '\n', config)
+        script = (ROOT / 'tools/activate-bar1-host194.sh').read_text()
+        self.assertIn('udevadm control --reload', script)
+        self.assertIn('udevadm settle --timeout=12', script)

@@ -50,6 +50,7 @@ finish() {
     rc=$?; trap - EXIT
     if ((autoload_block_owned)); then
         rm /run/modprobe.d/cmp170-bar1-maintenance.conf
+        udevadm control --reload || true
     fi
     if ((touched && !ready)); then
         echo 'Activation failed; restoring baseline driver (boot files unchanged)' >&2
@@ -81,6 +82,8 @@ timeout -k 5s 120s /usr/local/sbin/cmp170-gen2-second-pass auto
 install -d /run/modprobe.d
 install -m 0644 /usr/local/share/cmp170-bar1-maintenance.conf /run/modprobe.d/cmp170-bar1-maintenance.conf
 autoload_block_owned=1
+udevadm control --reload
+timeout -k 2s 15s udevadm settle --timeout=12
 for branch in "${branches[@]}"; do
     read -r root bus first second <<< "$branch"
     actual=$(readlink -f /sys/bus/pci/devices/$root)
@@ -121,6 +124,8 @@ for branch in "${branches[@]}"; do
         echo "0000:$gpu:00.0 BAR1=64GiB"
     done
 done
+timeout -k 2s 15s udevadm settle --timeout=12
+! grep -q '^nvidia ' /proc/modules
 timeout -k 2s 90s insmod "$modules/nvidia.ko"
 timeout -k 2s 20s insmod "$modules/nvidia-uvm.ko"
 count=$(timeout -k 2s 30s nvidia-smi --query-gpu=name --format=csv,noheader | grep -cx 'NVIDIA CMP 170HX')
