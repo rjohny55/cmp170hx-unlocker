@@ -1,0 +1,11 @@
+[Unit]
+Description=Deferred CMP 170HX Gen2 activation after boot
+
+[Timer]
+OnBootSec=3min
+AccuracySec=5s
+Unit=cmp170-gen2-second-pass.service
+RemainAfterElapse=yes
+
+[Install]
+WantedBy=timers.target

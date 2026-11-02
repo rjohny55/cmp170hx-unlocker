@@ -25,9 +25,11 @@ backup_dir=/var/lib/cmp170-unlock/backups/$(date -u +%Y%m%dT%H%M%SZ)
 
 bash -n "$repo_dir/scripts/gen2-second-pass.sh"
 [[ -f $repo_dir/systemd/cmp170-gen2-second-pass.service ]] || exit 1
+[[ -f $repo_dir/systemd/cmp170-gen2-second-pass.timer ]] || exit 1
 
 mkdir -p "$backup_dir"
 for path in /etc/cmp170-unlock.conf \
+            /etc/systemd/system/cmp170-gen2-second-pass.timer \
             /etc/systemd/system/cmp170-gen2-second-pass.service \
             /usr/local/sbin/cmp170-gen2-second-pass; do
     [[ ! -e $path ]] || cp -a "$path" "$backup_dir/"
@@ -46,11 +48,15 @@ install -m 0755 "$repo_dir/scripts/gen2-second-pass.sh" \
     /usr/local/sbin/cmp170-gen2-second-pass
 install -m 0644 "$repo_dir/systemd/cmp170-gen2-second-pass.service" \
     /etc/systemd/system/cmp170-gen2-second-pass.service
+install -m 0644 "$repo_dir/systemd/cmp170-gen2-second-pass.timer" \
+    /etc/systemd/system/cmp170-gen2-second-pass.timer
 printf 'CMP170_EXPECTED_GPUS=%s\n' "$requested_count" > /etc/cmp170-unlock.conf
 chmod 0644 /etc/cmp170-unlock.conf
 
 systemctl daemon-reload
-systemctl enable cmp170-gen2-second-pass.service
+# Remove the old sysinit.target.wants link without stopping a live activation.
+systemctl disable cmp170-gen2-second-pass.service
+systemctl enable cmp170-gen2-second-pass.timer
 systemctl reset-failed cmp170-gen2-second-pass.service 2>/dev/null || true
 echo "Installed cmp170-gen2-second-pass.service with inventory mode $requested_count; currently detected $actual_count GPU(s)."
-echo "Previous service/config files saved under $backup_dir. Activation was not started; reboot during maintenance to verify."
+echo "Previous service/config files saved under $backup_dir. Timer enabled for next boot; neither timer nor activation was started."
