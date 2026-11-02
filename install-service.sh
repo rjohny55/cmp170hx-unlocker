@@ -56,6 +56,12 @@ chmod 0644 /etc/cmp170-unlock.conf
 systemctl daemon-reload
 # Remove the old sysinit.target.wants link without stopping a live activation.
 systemctl disable cmp170-gen2-second-pass.service
+# A GRUB-generated runtime mask can hide the old enablement from systemctl.
+legacy_link=/etc/systemd/system/sysinit.target.wants/cmp170-gen2-second-pass.service
+if [[ -L $legacy_link && $(readlink -f "$legacy_link") == /etc/systemd/system/cmp170-gen2-second-pass.service ]]; then
+    rm "$legacy_link"
+fi
+systemctl daemon-reload
 systemctl enable cmp170-gen2-second-pass.timer
 systemctl reset-failed cmp170-gen2-second-pass.service 2>/dev/null || true
 echo "Installed cmp170-gen2-second-pass.service with inventory mode $requested_count; currently detected $actual_count GPU(s)."
